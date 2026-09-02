@@ -1,130 +1,85 @@
-<div align="center">
+# STONKS — Strategic Trading & Orchestration Network for Knowledge-driven Systems
 
-<img src="Assets/logo.png" alt="STONKS logo" width="220" height="220" />
+An autonomous multi-agent AI options desk that trades defined-risk structures on
+a dedicated Alpaca **paper** account. LLMs argue; the math decides; Alpaca executes.
 
-# STONKS
+**Demo:** (deployed URL) · **Repo:** github.com/rupanshsoni/STONKS · **Alpaca paper account:** (ID)
 
-**Strategic Trading & Orchestration Network for Knowledge-driven Systems**
+![STONKS](Assets/logo.png)
 
-*An autonomous multi-agent AI options desk that runs live on Alpaca paper trading — where LLM agents debate, a deterministic risk kernel decides, and the desk learns from its own mistakes.*
+## What it is
 
-[Live Demo](https://stonks.vercel.app) · [Architecture](docs/ARCHITECTURE.md) · [The Cast](docs/BRAND-AND-MASCOTS.md) · [Risk Kernel](docs/RISK.md)
-
-</div>
-
----
-
-## What is STONKS?
-
-STONKS is an autonomous options-trading desk staffed by AI agents, built for the [Alpaca AI Trading Agents Hackathon](https://lablab.ai/ai-hackathons/alpaca-ai-trading-agents-hackathon). It trades defined-risk options structures (the wheel, iron condors, credit spreads) on a dedicated **$100,000 Alpaca paper-trading account**, 24/5, with no human in the loop.
-
-The desk mirrors how a real trading floor works:
+STONKS is a trading firm shrunk into a hackathon: eight AI agents — analysts, a
+sentiment reader, a bull/bear debate, a judge, a deterministic risk kernel, an
+executor, and a post-mortem analyst that learns from losses — run an unattended
+cycle every 30 minutes while the market is open, and narrate everything they do
+in a live web UI.
 
 ```
-        ┌───────────────── THE ANALYST DESK ─────────────────┐
-        │  Senti (sentiment)   ·   code analysts (trend,    │
-        │  options flow, volatility regime, event risk)     │
-        └────────────────────────┬───────────────────────────┘
-                                 ▼
-        ┌───────────────── THE DEBATE ──────────────────────┐
-        │   Toro (bull)  ↔  Ursa (bear)  →  Verdi (judge)    │
-        └────────────────────────┬───────────────────────────┘
-                                 ▼
-        ┌───────────────── THE STRUCTURER ───────────────────┐
-        │  verdict + regime → structure menu → code picks     │
-        │  strikes, wings, size (the LLM never does the math) │
-        └────────────────────────┬────────────────────────────┘
-                                 ▼
-        ┌───────────────── SGT. GATE (risk kernel) ───────────┐
-        │  12 deterministic gates — every verdict journaled, │
-        │  every rejection explained, naked risk impossible   │
-        └────────────────────────┬────────────────────────────┘
-                                 ▼
-        ┌───────────────── XQ (executor) ────────────────────┐
-        │  Alpaca Trading API + official MCP server + CLI     │
-        │  atomic multi-leg orders, idempotent, reconciled     │
-        └────────────────────────┬────────────────────────────┘
-                                 ▼
-        ┌───────────────── SAGE (self-improvement) ───────────┐
-        │  losing trade? → post-mortem → lesson → L3 memory →  │
-        │  injected into every future debate. The desk learns.  │
-        └─────────────────────────────────────────────────────┘
+screener ─▶ analysts (code) ─▶ Senti (Gemini, citations) ─▶ Toro ↔ Ursa (debate)
+        ─▶ Verdi (GPT-4o verdict) ─▶ structurer (code: strikes/wings/DTE/size)
+        ─▶ Sgt. Gate: 12 deterministic gates ─▶ XQ: atomic multi-leg via MCP/API/CLI
+        ─▶ journal (JSONL + SSE) ─▶ web UI + mascots
+                     └────── Sage post-mortem ─▶ L3 lesson ─▶ injected into debates ─┘
 ```
 
-**The rules of the desk:**
+- **Doctrine:** LLMs argue; the math decides; Alpaca executes. Greeks, POP,
+  credits, and sizing are code-computed; LLM outputs are schema-validated, and
+  the only executable channel an LLM has is "select from the deterministic
+  shortlist."
+- **Risk kernel:** 12 gates, all scored (no short-circuit), every verdict
+  journaled with reason codes; exits run before entries; daily −2% flatten;
+  1% NAV per structure, 5% portfolio cap.
+- **Self-improvement:** losing trades trigger Sage's post-mortem; lessons go to
+  L3 memory and are injected into every future debate; param proposals are
+  **restrict-only** — the desk can only get more careful.
+- **Alpaca:** all three surfaces — Trading API (REST), the official MCP server
+  (pinned subprocess), and the CLI (independent position reconciliation each
+  cycle).
 
-- **LLMs argue; the math decides; Alpaca executes.** Agents reason, select, and narrate. Every greek, probability, position size, and credit is computed by deterministic code.
-- **Defined risk only.** Every position is an atomic multi-leg order with a structurally capped max loss.
-- **The desk says no.** Every rejection is journaled with a reason code — a visible "no" is worth more than a hidden loss.
-- **It learns in the open.** When a trade sours, Sage runs a post-mortem, writes the lesson to long-term memory, and the next debate starts smarter.
+## The cast
 
-## The Cast
-
-The desk is staffed by eight meme-man agents, each with a role, a color, and a personality — see them react live in the app:
-
-| Agent | Role | Color |
+| Agent | Role | Model |
 |---|---|---|
-| **Stonks Prime** | Orchestrator & narrator | White / spectrum glitch |
-| **Senti** | Sentiment analyst (public opinion, sources, expert reviews) | Blue |
-| **Toro** | Bull researcher | Green |
-| **Ursa** | Bear researcher | Red |
-| **Verdi** | Judge & verdict | Magenta/Purple |
-| **Sgt. Gate** | Risk-kernel officer | Amber |
-| **XQ** | Executor | Cyan |
-| **Sage** | Post-mortem & self-improvement | Orange |
-
-Full character spec: [docs/BRAND-AND-MASCOTS.md](docs/BRAND-AND-MASCOTS.md)
+| Stonks Prime | orchestrator & narrator | Gemini Flash |
+| Senti | sentiment w/ citations + credibility weighting | Gemini Flash |
+| Toro / Ursa | bull & bear researchers | Gemini Flash |
+| Verdi | judge | GPT-4o |
+| Structurer | deterministic menu (LLM confirms only) | GPT-4o |
+| Sgt. Gate | 12-gate risk kernel | none — pure code |
+| XQ | executor (API/MCP/CLI routing) | none — pure code |
+| Sage | post-mortem & lessons | GPT-4o |
 
 ## Quickstart
 
 ```bash
-# 1. Desk worker (Python 3.11+)
-cp .env.example .env          # add ALPACA_API_KEY / ALPACA_SECRET_KEY (paper!) + LLM keys
+# desk worker (Python 3.11+)
 pip install -r requirements.txt
-uvicorn stonks.api:app --reload          # http://localhost:8000
+cp .env.example .env       # add paper keys
+uvicorn stonks.api:app --reload
 
-# 2. Web app (Node 20+)
-cd apps/web
-pnpm install
-pnpm dev                                 # http://localhost:3000
+# web app (Node 20+)
+cd apps/web && pnpm install
+echo 'NEXT_PUBLIC_DESK_URL=http://localhost:8000' > .env.local
+pnpm dev
 ```
 
-Detailed setup, env vars, and deployment: [docs/DEPLOYMENT.md](docs/DEPLOYMENT.md)
+`STONKS_TEST=true` runs the entire pipeline with deterministic fixtures and
+synthetic Black-Scholes chains — zero network, zero keys.
 
-## Project layout
-
-```
-├── apps/web/               # Next.js 15 frontend (Vercel)
-├── stonks/                 # Python desk worker (Render)
-│   ├── agents/             #   analyst, debate, judge, structurer, post-mortem, narrator
-│   ├── kernel/              #   12 risk gates + exit ladder
-│   ├── alpaca/              #   API client + MCP + CLI (all three surfaces)
-│   ├── memory/              #   L1/L2/L3 layered memory (SQLite)
-│   ├── journal/             #   append-only decision log (JSONL)
-│   └── api/                 #   FastAPI + SSE event stream
-├── docs/                    # this documentation pack
-└── Assets/                 # brand assets (logo.png)
+```bash
+# tests (72 — gates, agents, alpaca surfaces)
+python -m pytest stonks/tests -q
 ```
 
-## Documentation
+## Docs
 
-| Doc | What's inside |
-|---|---|
-| [MVP.md](docs/MVP.md) | Scope, success criteria, build order |
-| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System design, data flow, tech choices |
-| [AGENTS.md](docs/AGENTS.md) | Agent roster, prompt schemas, debate protocol, sentiment spec, post-mortem & memory spec |
-| [UI.md](docs/UI.md) | Design system (palette extracted from the logo), pages, motion spec |
-| [BRAND-AND-MASCOTS.md](docs/BRAND-AND-MASCOTS.md) | Identity, the 8-character cast, states, animation technique |
-| [ALPACA-INTEGRATION.md](docs/ALPACA-INTEGRATION.md) | Trading API + MCP server + CLI integration details |
-| [RISK.md](docs/RISK.md) | The 12 gates, exit ladder, self-improvement thresholds |
-| [GIT-HISTORY.md](docs/GIT-HISTORY.md) | Commit plan & annotated history |
-| [DEPLOYMENT.md](docs/DEPLOYMENT.md) | Vercel + Render + env vars + cron |
-| [SUBMISSION.md](docs/SUBMISSION.md) | Hackathon submission checklist, one-pager, video script |
+- [MVP](docs/MVP.md) — scope & success criteria
+- [Architecture](docs/ARCHITECTURE.md) — system design
+- [Agents](docs/AGENTS.md) — roster, debate protocol, memory
+- [Risk](docs/RISK.md) — the 12 gates, exit ladder, restrict-only bounds
+- [Alpaca integration](docs/ALPACA-INTEGRATION.md) — API + MCP + CLI
+- [UI](docs/UI.md) · [Brand & mascots](docs/BRAND-AND-MASCOTS.md)
+- [Deployment](docs/DEPLOYMENT.md) · [Submission](docs/SUBMISSION.md) · [Git history](docs/GIT-HISTORY.md)
 
-## Disclaimer
-
-STONKS trades on **paper only** (simulated funds, real market data). Educational/research project — not investment advice. Built for the Alpaca AI Trading Agents Hackathon; results are hypothetical.
-
-## License
-
-MIT
+Built for the Alpaca AI Trading Agents Hackathon. Paper trading only.

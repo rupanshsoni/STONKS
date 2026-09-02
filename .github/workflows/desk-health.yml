@@ -1,0 +1,29 @@
+name: STONKS anti-sleep + reconcile fallback
+on:
+  schedule:
+    - cron: "*/30 13-20 * * 1-5"
+  workflow_dispatch:
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping desk health
+        run: |
+          code=$(curl -s -o /dev/null -w "%{http_code}" "${{ secrets.DESK_URL }}/health" || echo 000)
+          echo "health=$code"
+          if [ "$code" != "200" ]; then
+            echo "::warning::desk /health returned $code — Render may be sleeping or degraded"
+            exit 1
+          fi
+      - name: File issue on failure
+        if: failure()
+        uses: actions/github-script@v7
+        with:
+          script: |
+            github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "Desk health check failed",
+              body: "The scheduled ping to the Render desk worker failed. Check https://dashboard.render.com and the /journal endpoint.",
+              labels: ["ops"]
+            });
