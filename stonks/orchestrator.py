@@ -248,6 +248,7 @@ class Orchestrator:
                                  equity: float) -> None:
         candidates = await self.client.screener(RISK.max_candidates)
         pending = await asyncio.to_thread(self.store.pending_asks)
+        tradable = set(RISK.watchlist)
         ask_symbols: list[tuple[AskRequest, str]] = []
         for req in pending:
             if req.status == "queued":
@@ -257,11 +258,22 @@ class Orchestrator:
                             f"Copilot request running: {req.text}",
                             cycle_id=cycle_id, data={"ask_id": req.id})
             for s in req.symbols:
-                ask_symbols.append((req, s))
+                if s in tradable:
+                    ask_symbols.append((req, s))
+                else:
+                    req.status = "rejected"
+                    req.result_summary = (
+                        f"'{s}' is not in the desk's tradable universe "
+                        f"({', '.join(sorted(tradable))})."
+                    )
+                    await asyncio.to_thread(self.store.update_ask, req)
+                    self._event("desk", "ask_received",
+                                f"Copilot request rejected — '{s}' not tradable here.",
+                                cycle_id=cycle_id, level="warn")
         ask_only = [s for (_, s) in ask_symbols]
         merged: list = list(candidates)
         for req, sym in ask_symbols:
-            if sym not in [c.symbol for c in merged]:
+            if sym in tradable and sym not in [c.symbol for c in merged]:
                 price_map = await self.client.snapshot_prices([sym])
                 from stonks.schemas import Candidate as C
                 merged.append(C(symbol=sym, price=price_map.get(sym, 0.0),
