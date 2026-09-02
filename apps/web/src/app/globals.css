@@ -1,0 +1,245 @@
+@import "tailwindcss";
+
+@theme {
+  --color-page: #04091b;
+  --color-card: #0a0f26;
+  --color-card-hover: #101632;
+  --color-border-soft: #1c2444;
+  --color-border-strong: #2a3560;
+  --color-text-primary: #f8f8f8;
+  --color-text-secondary: #a8b0d0;
+  --color-text-muted: #5e6788;
+  --color-profit: #00ff87;
+  --color-loss: #ff4d5e;
+  --color-warning: #ffb020;
+  --color-info: #4da3ff;
+  --color-prime: #f8f8f8;
+  --color-senti: #4da3ff;
+  --color-toro: #00ff87;
+  --color-ursa: #ff4d5e;
+  --color-verdi: #c77dff;
+  --color-gate: #ffb020;
+  --color-xq: #00e5ff;
+  --color-sage: #ff8a3d;
+  --radius-control: 6px;
+  --radius-card: 10px;
+  --radius-modal: 12px;
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, "Liberation Mono", monospace;
+}
+
+:root {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-page);
+  color: var(--color-text-primary);
+  font-family: var(--font-sans);
+  font-size: 15px;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border-soft);
+  border-radius: var(--radius-card);
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.05), 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.card-hover:hover {
+  background: var(--color-card-hover);
+  border-color: var(--color-border-strong);
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.15rem 0.55rem;
+  border-radius: 9999px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  border: 1px solid var(--color-border-soft);
+}
+
+.stonks-wordmark {
+  position: relative;
+  letter-spacing: 0.08em;
+  font-weight: 800;
+}
+.stonks-wordmark::before,
+.stonks-wordmark::after {
+  content: attr(data-text);
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+.stonks-wordmark::before {
+  color: #ff0000;
+}
+.stonks-wordmark::after {
+  color: #00ffff;
+}
+.stonks-wordmark:hover::before,
+.stonks-wordmark.glitch-flash::before {
+  animation: glitch-l 180ms steps(2) 1;
+  opacity: 0.9;
+}
+.stonks-wordmark:hover::after,
+.stonks-wordmark.glitch-flash::after {
+  animation: glitch-r 180ms steps(2) 1;
+  opacity: 0.9;
+}
+@keyframes glitch-l {
+  0%, 100% { transform: translateX(0); opacity: 0; }
+  50% { transform: translateX(-2px); opacity: 0.9; }
+}
+@keyframes glitch-r {
+  0%, 100% { transform: translateX(0); opacity: 0; }
+  50% { transform: translateX(2px); opacity: 0.9; }
+}
+
+@keyframes mascot-bob {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-3px); }
+}
+@keyframes mascot-blink {
+  0%, 94%, 100% { transform: scaleY(1); }
+  96%, 98% { transform: scaleY(0.1); }
+}
+@keyframes mascot-sway {
+  0%, 100% { transform: rotate(-2deg); }
+  50% { transform: rotate(2deg); }
+}
+@keyframes mascot-nod {
+  0%, 100% { transform: rotate(2deg); }
+  50% { transform: rotate(-2deg); }
+}
+@keyframes mascot-lean {
+  0%, 100% { transform: translateX(0) rotate(0deg); }
+  50% { transform: translateX(3px) rotate(3deg); }
+}
+@keyframes mascot-stamp {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+@keyframes mascot-pop {
+  0% { transform: translateY(0) scale(1); }
+  40% { transform: translateY(-8px) scale(1.06); }
+  100% { transform: translateY(0) scale(1); }
+}
+@keyframes mascot-glitch-flash {
+  0%, 100% { opacity: 0; }
+  25% { opacity: 0.85; }
+  50% { opacity: 0.2; }
+  75% { opacity: 0.85; }
+}
+@keyframes mascot-droop {
+  0%, 100% { transform: rotate(10deg) translateY(4px); }
+  50% { transform: rotate(10deg) translateY(6px); }
+}
+@keyframes mascot-z-float {
+  0% { opacity: 0; transform: translateY(0); }
+  30% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-14px); }
+}
+@keyframes mascot-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+.mascot-state-idle .mascot-head {
+  animation: mascot-bob 1.6s ease-in-out infinite;
+}
+.mascot-state-idle .mascot-eyes {
+  animation: mascot-blink 6s steps(1) infinite;
+}
+.mascot-state-analyzing .mascot-head {
+  animation: mascot-sway 2.2s ease-in-out infinite;
+}
+.mascot-state-analyzing .mascot-eyes {
+  transform: scaleY(0.6);
+}
+.mascot-state-reading_news .mascot-head {
+  animation: mascot-nod 0.9s ease-in-out infinite;
+}
+.mascot-state-debating .mascot-head {
+  animation: mascot-lean 1.4s ease-in-out infinite;
+}
+.mascot-state-trading .mascot-head {
+  animation: mascot-stamp 0.12s steps(2) infinite;
+}
+.mascot-state-celebrating .mascot-head {
+  animation: mascot-pop 0.5s cubic-bezier(0.2, 0, 0, 1) 2;
+}
+.mascot-state-celebrating .mascot-glitch {
+  animation: mascot-glitch-flash 0.18s steps(2) 2;
+}
+.mascot-state-post_mortem .mascot-prop-lightbulb {
+  animation: mascot-pulse 1.2s ease-in-out infinite;
+}
+.mascot-state-risk_alert .mascot-prop-clipboard {
+  transform: translateY(-4px);
+}
+.mascot-state-risk_alert .mascot-eyes {
+  transform: rotate(8deg);
+}
+.mascot-state-sleeping .mascot-head {
+  animation: mascot-droop 2.4s ease-in-out infinite;
+}
+.mascot-state-sleeping .mascot-z {
+  animation: mascot-z-float 2.4s ease-in infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .mascot-state-idle .mascot-head,
+  .mascot-state-idle .mascot-eyes,
+  .mascot-state-analyzing .mascot-head,
+  .mascot-state-reading_news .mascot-head,
+  .mascot-state-debating .mascot-head,
+  .mascot-state-trading .mascot-head,
+  .mascot-state-celebrating .mascot-head,
+  .mascot-state-celebrating .mascot-glitch,
+  .mascot-state-post_mortem .mascot-prop-lightbulb,
+  .mascot-state-sleeping .mascot-head,
+  .mascot-state-sleeping .mascot-z,
+  .stonks-wordmark::before,
+  .stonks-wordmark::after {
+    animation: none !important;
+  }
+}
+
+.scroll-thin::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--color-border-strong);
+  border-radius: 3px;
+}
+
+.fade-enter {
+  animation: fade-in 0.2s cubic-bezier(0.2, 0, 0, 1);
+}
+@keyframes fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.skeleton {
+  background: linear-gradient(90deg, #0a0f26 25%, #101632 50%, #0a0f26 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite;
+  border-radius: var(--radius-control);
+}
+@keyframes shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
