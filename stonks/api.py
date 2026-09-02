@@ -221,7 +221,8 @@ async def ask(req: Request) -> dict:
         return {"error": "empty request"}
     import re
     symbols = re.findall(r"\b[A-Z]{2,5}\b", text.upper())
-    symbols = [s for s in symbols if s not in ("THE", "AND", "FOR", "WHY", "NOT", "HOW", "OUR", "SPY?", "NOW")]
+    known = {"SPY", "QQQ", "IWM", "AAPL", "MSFT", "NVDA", "TSLA", "VIXY"}
+    symbols = [s for s in symbols if s in known]
     ask_req = AskRequest(text=text, symbols=symbols[:3])
     await asyncio.to_thread(store.save_ask, ask_req)
     journal.emit("desk", "ask_received",
