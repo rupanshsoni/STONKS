@@ -1,0 +1,57 @@
+# Secrets — never
+.env
+.env.*
+*.env
+!.env.example
+*.pem
+*.key
+secrets*.json
+
+# State — never (broker is source of truth)
+*.db
+*.sqlite
+*.sqlite3
+*.db-journal
+data/
+logs/
+journal/*.jsonl
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Node
+node_modules/
+.next/
+out/
+dist/
+.turbo/
+*.tsbuildinfo
+pnpm-debug.log*
+
+# Local tooling & internal strategy research (not part of the product)
+.agents/
+skills-lock.json
+docs/0[1-8]-*.md
+docs/*.docx
+docs/~$*
+
+# OS
+.DS_Store
+Thumbs.db
+desktop.ini
+~$*
+
+# Editors
+.idea/
+.vscode/
+*.swp
+*.swo
