@@ -1,1 +1,2 @@
-"""Desk package init — imports assembled in stonks.api to keep cycles clean."""
+"""STONKS — Strategic Trading & Orchestration Network for Knowledge-driven Systems."""
+__version__ = "0.1.0"

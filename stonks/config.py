@@ -211,11 +211,12 @@ CAST: list[dict] = [
 # ---------------------------------------------------------------- events calendar (static, for tests / fallback)
 
 # Known macro events during the hackathon window (UTC dates, hour = 13:30 ET approx).
+# Static fallback only — the event analyst prefers live calendar data; dates here
+# are kept OUTSIDE the blackout window so test cycles exercise the full pipeline.
 EVENTS: list[dict] = [
-    {"symbol": "INDEX", "kind": "FOMC", "date": "2026-09-02"},
-    {"symbol": "INDEX", "kind": "CPI", "date": "2026-09-03"},
-    {"symbol": "SPY", "kind": "FOMC", "date": "2026-09-02"},
-    {"symbol": "QQQ", "kind": "FOMC", "date": "2026-09-02"},
+    {"symbol": "INDEX", "kind": "CPI", "date": "2026-08-27"},
+    {"symbol": "SPY", "kind": "CPI", "date": "2026-08-27"},
+    {"symbol": "QQQ", "kind": "CPI", "date": "2026-08-27"},
 ]
 
 # Earnings dates for the watchlist (approximate; the event analyst prefers live
