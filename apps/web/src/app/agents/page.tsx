@@ -6,8 +6,10 @@ import MascotAvatar from "@/components/mascots/MascotAvatar";
 import { CAST } from "@/components/mascots/cast";
 import { useDeskStore } from "@/lib/store";
 import { timeAgo } from "@/lib/format";
+import type { MascotState } from "@/lib/types";
+import { Bot, Sparkles, Activity, ShieldCheck, ChevronDown, ChevronUp } from "lucide-react";
 
-const PROPS: Record<string, string> = {
+const PROPS: Record<string, "arms" | "phone" | "horns" | "umbrella" | "gavel" | "clipboard" | "stamp" | "lightbulb"> = {
   prime: "arms",
   senti: "phone",
   toro: "horns",
@@ -28,71 +30,156 @@ export default function AgentsPage() {
 
   return (
     <Shell>
-      <h1 className="mb-4 text-2xl font-bold">Agents</h1>
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-4">
+      {/* Header */}
+      <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
+        <div>
+          <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
+            The Agent Roster
+            <span className="pill text-[10px] border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
+              8 Active Desks
+            </span>
+          </h1>
+          <p className="text-xs md:text-sm text-text-secondary mt-1">
+            Specialized LLM and code agents collaborating to research, deliberate, score, and execute options trades.
+          </p>
+        </div>
+      </div>
+
+      {/* Agents Grid */}
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-4">
         {CAST.map((c) => {
           const card = cards.find((a) => a.id === c.id);
-          const timeline = events.filter((e) => e.agent === c.id).slice(0, 20);
+          const timeline = events.filter((e) => e.agent === c.id).slice(0, 15);
           const isOpen = open === c.id;
-          return (
-            <div key={c.id} className={`card card-hover p-4 transition-colors ${isOpen ? "md:col-span-2 xl:col-span-4" : ""}`}>
-              <button
-                className="flex w-full items-start gap-3 text-left"
-                onClick={() => setOpen(isOpen ? null : c.id)}
-              >
-                <span
-                  className={`mascot-state-${states[c.id] ?? card?.state ?? "idle"} rounded-xl ring-2 ring-offset-2 ring-offset-page`}
-                  style={{ ["--tw-ring-color" as string]: c.ink }}
-                >
-                  <MascotAvatar
-                    agent={c.id}
-                    ink={c.ink}
-                    prop={PROPS[c.id] as "arms"}
-                    size={96}
-                  />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <h2 className="font-semibold" style={{ color: c.ink }}>
-                    {c.name}
-                  </h2>
-                  <p className="text-xs text-text-secondary">{c.role}</p>
-                  <span
-                    className={`pill mt-2 ${
-                      card?.state && card.state !== "idle"
-                        ? "border-info/40 bg-info/10 text-info"
-                        : "border-border-soft text-text-muted"
-                    }`}
-                  >
-                    {states[c.id] ?? card?.state ?? "idle"}
-                  </span>
-                  <p className="mt-2 line-clamp-2 text-xs text-text-secondary">
-                    {card?.task || card?.last_output || c.quip}
-                  </p>
-                  {card?.model && (
-                    <span className="num mt-1 inline-block text-[10px] text-text-muted">
-                      {card.model}
-                    </span>
-                  )}
-                </div>
-              </button>
+          const currentState: MascotState =
+            states[c.id] ?? card?.state ?? "idle";
 
-              {isOpen && (
-                <div className="mt-4 border-t border-border-soft pt-3">
-                  <h3 className="mb-2 text-sm font-semibold">Recent actions</h3>
-                  {timeline.length ? (
-                    <ul className="scroll-thin max-h-64 space-y-1 overflow-y-auto">
-                      {timeline.map((e) => (
-                        <li key={e.id} className="flex items-baseline gap-2 text-xs">
-                          <span className="num shrink-0 text-text-muted">{timeAgo(e.ts)}</span>
-                          <span className="text-text-secondary">{e.summary}</span>
-                        </li>
-                      ))}
-                    </ul>
-                  ) : (
-                    <p className="text-xs text-text-muted">No recorded actions yet.</p>
-                  )}
+          return (
+            <div
+              key={c.id}
+              className={`card card-hover p-5 flex flex-col justify-between transition-all duration-200 ${
+                isOpen ? "md:col-span-2 xl:col-span-4 border-cyan-500/30 shadow-[0_0_30px_rgba(0,229,255,0.06)]" : ""
+              }`}
+            >
+              <div>
+                {/* Top Bar: Mascot Avatar & Info */}
+                <div className="flex items-start gap-4">
+                  <div
+                    className="relative shrink-0 rounded-2xl border p-1 bg-[#070a14] shadow-lg"
+                    style={{
+                      borderColor: `${c.ink}40`,
+                      boxShadow: `0 0 20px ${c.ink}15`,
+                    }}
+                  >
+                    <MascotAvatar
+                      agent={c.id}
+                      ink={c.ink}
+                      prop={PROPS[c.id]}
+                      state={currentState}
+                      size={72}
+                    />
+                    <span
+                      className="absolute -bottom-1 -right-1 h-3 w-3 rounded-full border-2 border-[#0D111C]"
+                      style={{
+                        backgroundColor:
+                          currentState === "idle"
+                            ? "#10B981"
+                            : currentState === "celebrating"
+                            ? "#FBBF24"
+                            : currentState === "risk_alert"
+                            ? "#EF4444"
+                            : c.ink,
+                      }}
+                    />
+                  </div>
+
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-1">
+                      <h2 className="font-bold text-base text-white truncate">
+                        {c.name}
+                      </h2>
+                      <span
+                        className="text-[9px] font-mono px-1.5 py-0.5 rounded uppercase font-semibold"
+                        style={{
+                          color: c.ink,
+                          backgroundColor: `${c.ink}15`,
+                        }}
+                      >
+                        {currentState}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-text-secondary truncate mt-0.5 font-medium">
+                      {c.role}
+                    </p>
+
+                    <div className="mt-2 flex items-center gap-1.5">
+                      <span className="pill font-mono text-[9px] border-white/10 bg-white/5 text-text-muted">
+                        {c.model}
+                      </span>
+                    </div>
+                  </div>
                 </div>
-              )}
+
+                {/* Directives / Current Task */}
+                <div className="mt-4 rounded-xl border border-white/5 bg-[#080B15] p-3 text-xs">
+                  <div className="text-[10px] font-medium uppercase tracking-wider text-text-muted mb-1 flex items-center gap-1">
+                    <Activity size={12} className="text-cyan-400" />
+                    {card?.task ? "Active Task" : "Core Directive"}
+                  </div>
+                  <p className="text-text-primary text-[12px] leading-relaxed line-clamp-2">
+                    {card?.task || card?.last_output || c.description}
+                  </p>
+                </div>
+
+                {/* Quip */}
+                <p className="mt-3 text-[11px] italic text-text-muted">
+                  &ldquo;{c.quip}&rdquo;
+                </p>
+              </div>
+
+              {/* Action History Toggle Button */}
+              <div className="mt-4 pt-3 border-t border-white/5">
+                <button
+                  onClick={() => setOpen(isOpen ? null : c.id)}
+                  className="w-full flex items-center justify-between text-xs text-text-secondary hover:text-white transition-colors"
+                >
+                  <span className="font-medium">
+                    {isOpen ? "Hide Action History" : `View Activity (${timeline.length})`}
+                  </span>
+                  {isOpen ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+
+                {/* Expanded Activity Timeline */}
+                {isOpen && (
+                  <div className="mt-3 pt-2 border-t border-white/5">
+                    <h3 className="mb-2 text-xs font-semibold uppercase tracking-wider text-text-muted">
+                      Recent Desk Operations
+                    </h3>
+                    {timeline.length ? (
+                      <ul className="scroll-thin max-h-56 space-y-2 overflow-y-auto pr-1">
+                        {timeline.map((e) => (
+                          <li
+                            key={e.id}
+                            className="flex items-start gap-2.5 rounded-lg border border-white/5 bg-[#080B15]/60 p-2 text-xs"
+                          >
+                            <span className="num shrink-0 text-[10px] text-text-muted mt-0.5">
+                              {timeAgo(e.ts)}
+                            </span>
+                            <span className="text-text-primary text-[12px] leading-snug">
+                              {e.summary}
+                            </span>
+                          </li>
+                        ))}
+                      </ul>
+                    ) : (
+                      <p className="text-xs text-text-muted py-2">
+                        No recorded actions yet for this cycle.
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
             </div>
           );
         })}

@@ -13,37 +13,55 @@ import {
   ScrollText,
   Menu,
   X,
+  Radio,
 } from "lucide-react";
 
-const NAV = [
-  { href: "/", label: "Overview", icon: LayoutDashboard },
-  { href: "/agents", label: "Agents", icon: Users },
-  { href: "/memory", label: "Memory", icon: Brain },
-  { href: "/ask", label: "Ask", icon: MessageSquarePlus },
-  { href: "/risk", label: "Risk", icon: ShieldCheck },
-  { href: "/journal", label: "Journal", icon: ScrollText },
+const NAVIGATION_ITEMS = [
+  { href: "/", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/agents", label: "Agent Roster", icon: Users },
+  { href: "/risk", label: "Risk Gates", icon: ShieldCheck },
 ];
 
-function NavLinks({ onNavigate }: { onNavigate?: () => void }) {
+const DESK_APPS = [
+  { href: "/ask", label: "Desk Copilot", icon: MessageSquarePlus },
+  { href: "/memory", label: "L3 Memory", icon: Brain },
+  { href: "/journal", label: "Audit Journal", icon: ScrollText },
+];
+
+function NavGroup({
+  items,
+  onNavigate,
+}: {
+  items: typeof NAVIGATION_ITEMS;
+  onNavigate?: () => void;
+}) {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-col gap-1" aria-label="Primary">
-      {NAV.map(({ href, label, icon: Icon }) => {
+    <nav className="flex flex-col gap-1" aria-label="Navigation Group">
+      {items.map(({ href, label, icon: Icon }) => {
         const active = pathname === href;
         return (
           <Link
             key={href}
             href={href}
             onClick={onNavigate}
-            className={`flex items-center gap-3 rounded-radiu-control border-l-2 px-3 py-2 text-sm transition-colors ${
+            className={`group relative flex items-center gap-3 rounded-xl px-3 py-2 text-[13px] font-medium transition-all duration-150 ${
               active
-                ? "border-l-prime bg-card text-text-primary"
-                : "border-l-transparent text-text-secondary hover:bg-card-hover hover:text-text-primary"
+                ? "bg-cyan-500/10 text-cyan-400 font-semibold border border-cyan-400/35 shadow-[0_0_20px_rgba(0,229,255,0.08)]"
+                : "text-text-secondary hover:bg-white/[0.03] hover:text-white border border-transparent"
             }`}
-            style={{ borderRadius: 0 }}
           >
-            <Icon size={18} aria-hidden />
-            <span className="hidden md:inline">{label}</span>
+            <Icon
+              size={17}
+              className={`transition-colors duration-150 ${
+                active ? "text-cyan-400" : "text-text-muted group-hover:text-text-secondary"
+              }`}
+              aria-hidden
+            />
+            <span className="tracking-tight">{label}</span>
+            {active && (
+              <span className="absolute right-2.5 h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-[0_0_6px_#00e5ff]" />
+            )}
           </Link>
         );
       })}
@@ -56,7 +74,7 @@ export default function Sidebar() {
   return (
     <>
       <button
-        className="fixed left-4 top-4 z-50 rounded-control border border-border-soft bg-card p-2 lg:hidden"
+        className="fixed left-4 top-3.5 z-50 rounded-xl border border-white/10 bg-[#0c101d] p-2 text-text-secondary hover:text-white lg:hidden shadow-xl"
         onClick={() => setOpen((o) => !o)}
         aria-label={open ? "Close menu" : "Open menu"}
       >
@@ -65,26 +83,76 @@ export default function Sidebar() {
 
       {open && (
         <div
-          className="fixed inset-0 z-40 bg-black/60 lg:hidden"
+          className="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm lg:hidden"
           onClick={() => setOpen(false)}
         />
       )}
 
       <aside
-        className={`fixed left-0 top-0 z-40 flex h-full w-16 flex-col gap-6 border-r border-border-soft bg-card px-2 py-6 transition-transform md:w-52 lg:translate-x-0 ${
+        className={`fixed left-0 top-0 z-40 flex h-full w-16 flex-col border-r border-white/5 bg-[#080b14]/95 backdrop-blur-2xl px-2.5 py-5 transition-transform duration-300 md:w-56 lg:translate-x-0 ${
           open ? "translate-x-0" : "-translate-x-full"
         }`}
       >
-        <Link href="/" className="flex items-center gap-2 px-1 md:px-2" onClick={() => setOpen(false)}>
-          <Image src="/brand/logo.png" alt="STONKS" width={32} height={32} className="rounded" priority />
-          <span className="stonks-wordmark hidden text-sm text-text-primary md:inline" data-text="STONKS">
-            STONKS
-          </span>
+        {/* Brand Header */}
+        <Link
+          href="/"
+          className="flex items-center gap-3 px-2 mb-6 group"
+          onClick={() => setOpen(false)}
+        >
+          <div className="relative rounded-xl overflow-hidden border border-cyan-500/30 p-0.5 bg-[#05070e] shadow-[0_0_15px_rgba(0,229,255,0.15)] group-hover:border-cyan-400 transition-colors">
+            <Image
+              src="/brand/logo.png"
+              alt="STONKS Logo"
+              width={32}
+              height={32}
+              className="rounded-lg object-contain"
+              priority
+            />
+          </div>
+          <div className="hidden md:flex flex-col">
+            <span
+              className="stonks-wordmark text-sm font-extrabold tracking-wider text-white group-hover:text-cyan-400 transition-colors"
+              data-text="STONKS"
+            >
+              STONKS
+            </span>
+            <span className="text-[9px] font-mono tracking-tight text-text-muted">
+              v1.0 · Autonomous Desk
+            </span>
+          </div>
         </Link>
-        <NavLinks onNavigate={() => setOpen(false)} />
-        <p className="mt-auto hidden px-2 text-[10px] leading-tight text-text-muted md:block">
-          Strategic Trading &amp; Orchestration Network for Knowledge-driven Systems
-        </p>
+
+        {/* Section 1: Navigation */}
+        <div className="mb-5">
+          <div className="hidden md:block px-2 mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">
+            Navigation
+          </div>
+          <NavGroup items={NAVIGATION_ITEMS} onNavigate={() => setOpen(false)} />
+        </div>
+
+        {/* Section 2: Desk Engine */}
+        <div className="mb-auto">
+          <div className="hidden md:block px-2 mb-2 text-[10px] font-bold uppercase tracking-[0.14em] text-text-muted">
+            Desk Engine
+          </div>
+          <NavGroup items={DESK_APPS} onNavigate={() => setOpen(false)} />
+        </div>
+
+        {/* Footer Station Card */}
+        <div className="mt-auto hidden md:block pt-4 border-t border-white/5">
+          <div className="rounded-xl border border-white/5 bg-white/[0.02] p-3 text-[11px]">
+            <div className="flex items-center justify-between text-text-muted mb-1.5">
+              <span className="flex items-center gap-1.5">
+                <Radio size={12} className="text-cyan-400 animate-pulse" />
+                <span className="text-white text-[11px] font-semibold">Alpaca Paper</span>
+              </span>
+              <span className="font-mono text-[9px] text-cyan-400 font-bold">ACTIVE</span>
+            </div>
+            <p className="text-[10.5px] text-text-muted leading-snug">
+              12-gate deterministic execution kernel.
+            </p>
+          </div>
+        </div>
       </aside>
     </>
   );

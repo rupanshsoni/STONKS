@@ -44,6 +44,14 @@ docs/0[1-8]-*.md
 docs/*.docx
 docs/~$*
 
+# UI iterations & archives
+ui_inspo/
+*.zip
+version_1_original/
+version_2_obsidian_blue/
+version_3_emerald_e8/
+version_4/
+
 # OS
 .DS_Store
 Thumbs.db
