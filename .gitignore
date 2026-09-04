@@ -52,6 +52,9 @@ version_2_obsidian_blue/
 version_3_emerald_e8/
 version_4/
 
+# Local-only demo/screenshot harness (never ships)
+demo/
+
 # OS
 .DS_Store
 Thumbs.db

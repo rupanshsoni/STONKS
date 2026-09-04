@@ -14,33 +14,40 @@
 | Starting balance $100,000 | Verified via `/v2/account` |
 | **Alpaca paper trading account ID included** | Top-bar badge + submission field + one-pager |
 | **One-page write-up: AI logic, risk gates, Alpaca infrastructure** | §3 below |
-| Working prototype others can use online | Vercel + Render URLs (DEPLOYMENT.md) |
+| Working prototype others can use online | https://stonks-five-alpha.vercel.app (Vercel) + https://stonks-cri1.onrender.com (Render) |
 | Video presentation (≤5 min MP4) | Script in §4 |
 | Slide presentation (PDF) | Outline in §5 |
 | Public GitHub repository | github.com/rupanshsoni/STONKS — commits across the whole window (GIT-HISTORY.md) |
 | Cover image (PNG/JPG 16:9) | Logo on navy + cast lineup + "STONKS" wordmark |
 | Social engagement (up to 5 links, X + LinkedIn, tag both) | §6 plan |
 
-## 2. Submission form fields (draft)
+## 2. Submission form fields (FINAL — copy-paste)
 
-- **Title:** STONKS
-- **Short description:** An autonomous multi-agent options desk where AI agents analyze sentiment, debate, pass a deterministic risk kernel, and trade defined-risk options live on your Alpaca paper account — then learn from their own losses.
-- **Tags:** Alpaca, MCP, Python, Next.js, Gemini, GPT-4o, Featherless, LangGraph-free custom orchestration, SQLite
-- **Demo URL:** (Vercel link)
-- **App platform:** Vercel (web) + Render (desk worker)
+- **Title:** STONKS — Strategic Trading & Orchestration Network for Knowledge-driven Systems
+- **Short description:** An autonomous multi-agent options desk where AI agents analyze sentiment, debate, pass a deterministic 12-gate risk kernel, and trade defined-risk options live on a dedicated Alpaca paper account — then learn from their own losses.
+- **Demo URL:** https://stonks-five-alpha.vercel.app
+- **App platform:** Vercel (web desk) + Render (desk worker)
+- **Worker API:** https://stonks-cri1.onrender.com (health: /health)
 - **GitHub:** https://github.com/rupanshsoni/STONKS
-- **Alpaca paper account ID:** *(from `/v2/account` — filled on submission day)*
-- **Social links:** *(filled as posted — §6)*
+- **Alpaca paper account ID:** **PA3WFTQH47I4** (dedicated, $100k start — verified via /v2/account and /health)
+- **Tags:** Alpaca, Trading API, MCP, CLI, Options, Multi-Agent, Python, FastAPI, Next.js, OpenRouter, GLM, MiniMax
+- **Video:** (paste uploaded MP4 link)
+- **Slides:** (paste PDF link)
+- **Social links:** (paste up to 5 — X + LinkedIn, tagging @lablabai @AlpacaHQ)
+
+### Long description (paste as-is)
+
+STONKS is an autonomous multi-agent AI options desk for Alpaca's paper environment. Eight specialized agents run an unattended 30-minute cycle: deterministic code analysts (trend, IV rank, gamma-weighted dealer exposure, liquidity, event risk) and a sentiment analyst that reads real Alpaca news with per-source credibility weighting and citations; a bull/bear debate (Toro vs Ursa, 2 rounds, claims must cite analyst facts); a judge (Verdi) issuing direction + conviction; a deterministic structurer that picks every strike, wing, DTE, and size — LLMs never compute a tradeable number. Every proposal then faces Sgt. Gate: twelve deterministic gates (sanity, regime, VRP edge, event blackout, defined-risk atomicity, liquidity, credit quality, 1% NAV position cap, 5% portfolio cap, concentration, duplicate-idempotency, and a −2% daily flatten-and-halt) — all scored, none short-circuit, every verdict journaled with reason codes. The executor (XQ) places atomic multi-leg orders through Alpaca's Trading API with idempotent client_order_ids, with the official MCP server as the agent tool surface and the Alpaca CLI providing independent position reconciliation every cycle. When a position sours, Sage's post-mortem assigns root cause and writes a boolean-checkable lesson into L3 memory that is injected into every future debate — and its parameter proposals are restrict-only, so the desk can only become more careful over time. The whole desk narrates itself in a live web UI: real-time SSE feed, live equity curve and position marks from option snapshots, the complete filterable journal, and a copilot ("invest in NVDA") that faces the same analysts, debates, and gates — including honest rejections, shown with reasons. Doctrine: LLMs argue; the math decides; Alpaca executes.
 
 ## 3. The one-pager (AI logic, risk gates, Alpaca infrastructure)
 
 **STONKS — Strategic Trading & Orchestration Network for Knowledge-driven Systems**
 
-**AI logic.** A trading-firm-shaped pipeline runs unattended every 15–30 min while markets are open: deterministic analysts (trend, IV rank, dealer-gamma regime, liquidity, event risk) and a sentiment analyst (Gemini Flash) that scores public opinion from Alpaca's news with per-source credibility weighting and citations; a bull↔bear debate (2 rounds); a GPT-4o judge issuing verdict + conviction; a deterministic structurer that picks strikes, wings, DTE and size — *LLMs never compute greeks, credits, or sizes; code does, and the LLMs argue over code-computed facts.* After execution, a narrator turns journal entries into the live feed. When a position sours, a post-mortem agent (GPT-4o) assigns root cause and writes a boolean-checkable lesson into L3 memory, which is injected into every future debate — and may propose restrict-only parameter tightening, so the desk can only become more careful over time.
+**AI logic.** A trading-firm-shaped pipeline runs unattended every 30 min while markets are open: deterministic analysts (trend, IV rank, gamma-weighted dealer exposure, liquidity, event risk) and a sentiment analyst (GLM 5.2 via OpenRouter) that scores public opinion from Alpaca's news with per-source credibility weighting and citations; a bull↔bear debate (2 rounds, claims must cite code-computed facts); a MiniMax M3 judge issuing verdict + conviction; a deterministic structurer that picks strikes, wings, DTE and size — *LLMs never compute greeks, credits, or sizes; code does, and the LLMs argue over code-computed facts.* After execution, a narrator turns journal entries into the live feed. When a position sours, a post-mortem agent (MiniMax M3) assigns root cause and writes a boolean-checkable lesson into L3 memory, which is injected into every future debate — and may propose restrict-only parameter tightening, so the desk can only become more careful over time. Cross-provider failover (GLM → MiniMax → Gemini, then deterministic rules) keeps the desk alive, with honest model attribution on every journal event.
 
 **Risk gates.** Twelve deterministic gates score every proposal (none short-circuit, so the journal records how badly rejected trades failed): sanity/freshness, regime (VIX/GEX), volatility-risk-premium edge, event blackout, defined-risk atomicity, liquidity, credit quality, position size ≤ 1% NAV, portfolio risk ≤ 5% NAV, concentration, duplicate/idempotency, and a −2% daily-loss flatten-and-halt. The exit ladder runs before entries: 50% profit target, 2× credit stop, 21-DTE time stop, event and regime-flip closes. Max loss per position is structural (atomic multi-leg), and property tests verify the invariants.
 
-**Alpaca infrastructure.** All three surfaces: the **Trading API** (alpaca-py) for orders/positions/data and a trade_updates WebSocket feeding SSE to the UI; the **official Alpaca MCP server** (uvx subprocess, pinned, toolsets filtered to account/trading/assets/stock-data/options-data/news) as the agent tool surface; and the **Alpaca CLI** as an independent reconciliation source each cycle ("a REST client cannot quietly agree with itself") plus dry-run previews in tests. Every order uses deterministic client_order_ids (restart-safe, duplicate-proof). Verified conventions: negative limit prices as credit floors on multi-leg orders; conservative bid/ask marking. Free-feed caveats (EOD OI, invisible 0DTE) are documented on the risk page rather than hidden. Trades on a dedicated $100k paper account, ID: *(filled at submission)*.
+**Alpaca infrastructure.** The **Trading API is the primary executing surface** (alpaca-py-compatible REST): orders/positions/account/clock, option chains + snapshots with OCC symbols and 100-symbol batching (OI from contracts; IV, greeks, volume hydrated live), stock snapshots, screener endpoints, news, daily bars, and portfolio history — all feeding a live SSE stream to the UI. The **official Alpaca MCP server** (pinned subprocess, toolsets filtered to account/trading/assets/market-data/options-data/news) serves as the agent tool surface. The **Alpaca CLI** provides independent position reconciliation every cycle and `--dry-run` order previews in the gate pipeline — when the binary is absent on a host, reconciliation abstains and journals it rather than fabricate agreement. Every order uses deterministic client_order_ids (restart-safe, duplicate-proof), and a hard guard refuses any non-paper base URL or mode (tested). Trades on a dedicated $100,000 paper account, ID: **PA3WFTQH47I4**.
 
 ## 4. Video script (4:00 target, ≤5:00 hard)
 
@@ -81,10 +88,14 @@ Engage bidirectionally (comment on other teams' builds) — engagement is two-wa
 
 ## 7. Final-day checklist
 
-- [ ] Fresh $100k account ID captured in UI + submission field
-- [ ] Repo public, README final, screenshots in, secrets scanned, MIT LICENSE
-- [ ] Demo URL smoke-tested logged-out; SSE live; journal flowing
-- [ ] Video ≤5 min MP4 exported + uploaded; slides PDF exported
-- [ ] One-pager pasted into submission
-- [ ] 5 social links collected
-- [ ] Submitted by 12:00 CEST (5-hour buffer); every link clicked from the public view
+- [x] Fresh $100k account ID captured: **PA3WFTQH47I4** (UI badge + /health + this doc)
+- [x] Deployed demo: https://stonks-five-alpha.vercel.app · worker https://stonks-cri1.onrender.com (verified logged-out, SSE live, CORS locked)
+- [x] Repo public, README final (badges, links, honesty guarantees), secrets scanned, MIT LICENSE
+- [x] One-pager final (§3, API-primary wording, real account ID)
+- [ ] Video ≤5 min MP4 — script in **[VIDEO-SCRIPT.md](VIDEO-SCRIPT.md)** (beat sheet with timestamps)
+- [ ] Slides PDF — 10-page outline in §5
+- [ ] Cover image 16:9 (logo on navy + cast lineup)
+- [ ] 5 social links collected (X + LinkedIn, tag @lablabai @AlpacaHQ)
+- [ ] Submit on lablab before 17:00 CEST; every link clicked from a logged-out browser
+
+> Recording the video: follow `docs/VIDEO-SCRIPT.md` — 4:30 beat sheet, golden-path only, re-record beats not takes, captions on, export 1440p MP4.
