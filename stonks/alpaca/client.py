@@ -176,7 +176,10 @@ class AlpacaClient:
                 _add(s, prices.get(s, 0.0), 0.0, "watchlist")
 
         if not out:
-            return [Candidate.model_validate(c) for c in fixtures.SCREENER]
+            # Live screener + snapshot both unavailable — return nothing and
+            # let the desk idle this cycle. Fabricated fixture candidates must
+            # never enter a live pipeline.
+            return []
         return out[: limit + len(RISK.watchlist)]
 
     async def news(self, symbol: str, limit: int = 10) -> list[NewsArticle]:
@@ -384,6 +387,38 @@ class AlpacaClient:
             return max(0.0, (utcnow() - ts).total_seconds())
         except Exception:
             return 999.0
+
+    async def option_marks(self, option_symbols: list[str]) -> dict[str, float | None]:
+        """Current mid for OCC option symbols (for live position marking).
+
+        Returns {occ_symbol: mid or None} — None means no live quote; callers
+        must surface that honestly rather than fabricating a mark.
+        """
+        if self.test_mode or not option_symbols:
+            return {s: None for s in option_symbols}
+        out: dict[str, float | None] = {}
+        BATCH = 100
+        for i in range(0, len(option_symbols), BATCH):
+            batch = option_symbols[i:i + BATCH]
+            try:
+                data = await self._get_data(
+                    "/v1beta1/options/snapshots",
+                    params={"symbols": ",".join(batch)},
+                )
+            except Exception:
+                for s in batch:
+                    out[s] = None
+                continue
+            snaps = data.get("snapshots", data or {})
+            for s in batch:
+                snap = snaps.get(s)
+                quote = (snap or {}).get("latestQuote") or {}
+                bid, ask = _to_float(quote.get("bp")), _to_float(quote.get("ap"))
+                if bid is not None and ask is not None and bid + ask > 0:
+                    out[s] = round((bid + ask) / 2, 4)
+                else:
+                    out[s] = None
+        return out
 
     async def daily_bars(self, symbol: str, days: int = 30) -> list[dict]:
         """Daily close history from the market data API (for realized-vol VRP edge)."""

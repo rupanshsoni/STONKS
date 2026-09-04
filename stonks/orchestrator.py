@@ -16,7 +16,6 @@ import math
 import uuid
 from datetime import timedelta
 
-from stonks import fixtures
 from stonks.agents import (
     CodeAnalysts,
     LLMClient,
@@ -191,9 +190,10 @@ class Orchestrator:
             view = self._ledger_to_view(ledger, chain)
             decision = check_exits(view, chain)
             if decision is None:
-                pnl_pct = view.unrealized_pnl / max(ledger.spec.premium_risk, 1.0)
-                if pnl_pct <= RISK.post_mortem_trigger_pct:
-                    await self.run_post_mortem(ledger, cycle_id, view)
+                if view.unrealized_pnl is not None:
+                    pnl_pct = view.unrealized_pnl / max(ledger.spec.premium_risk, 1.0)
+                    if pnl_pct <= RISK.post_mortem_trigger_pct:
+                        await self.run_post_mortem(ledger, cycle_id, view)
                 continue
             self._set_state("xq", "trading", f"exit: {decision.rule}")
             self._event("xq", "exit_rule",
@@ -355,7 +355,8 @@ class Orchestrator:
                     f"{symbol} sentiment {sentiment.public_sentiment:+.2f} "
                     f"(conf {sentiment.confidence:.2f}, {len(sentiment.citations)} citations).",
                     symbol=symbol, cycle_id=cycle_id,
-                    data=sentiment.model_dump(), model="z-ai/glm-5.2:free")
+                    data=sentiment.model_dump(),
+                    model=sentiment.model or "fallback:rules")
 
         reports = self.analysts.analyze(symbol, chain, price, news,
                                         iv_rank=self._iv_rank(symbol), vix=vix,
@@ -566,7 +567,8 @@ class Orchestrator:
                     + (f" | REJECTED_PROPOSAL: {', '.join(f'{p.param} {p.reason}' for p in rejected)}."
                        if rejected else ""),
                     symbol=ledger.symbol, cycle_id=cycle_id,
-                    data=lesson.model_dump(), model="minimax/minimax-m3:free")
+                    data=lesson.model_dump(),
+                    model=lesson.model or "fallback:rules")
         self._set_state("sage", "analyzing", "lesson filed to L3")
         self._set_state("sage", "idle")
         summary_rejected = [p for p in lesson.param_proposals if p.status == "rejected"]

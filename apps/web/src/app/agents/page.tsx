@@ -36,7 +36,7 @@ export default function AgentsPage() {
           <h1 className="text-xl md:text-2xl font-bold tracking-tight text-white flex items-center gap-2">
             The Agent Roster
             <span className="pill text-[10px] border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
-              8 Active Desks
+              {CAST.length} Agents
             </span>
           </h1>
           <p className="text-xs md:text-sm text-text-secondary mt-1">
@@ -115,7 +115,7 @@ export default function AgentsPage() {
 
                     <div className="mt-2 flex items-center gap-1.5">
                       <span className="pill font-mono text-[9px] border-white/10 bg-white/5 text-text-muted">
-                        {c.model}
+                        {card?.model ?? c.model}
                       </span>
                     </div>
                   </div>

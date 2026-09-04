@@ -58,6 +58,7 @@ async def post_mortem(
         failed_signal = str(data.get("failed_signal", ""))[:120]
         missed_check = str(data.get("missed_check", ""))[:120]
         proposals_raw = data.get("param_proposals", [])
+        sage_model = str(data.get("_model", "")) or "unknown"
     except LLMBusError:
         root_cause = (
             "event_risk_underweighted"
@@ -70,6 +71,7 @@ async def post_mortem(
         failed_signal = "event calendar proximity to entry"
         missed_check = "IV term structure across the event boundary"
         proposals_raw = []
+        sage_model = "fallback:rules"
 
     proposals: list[ParamProposal] = []
     if isinstance(proposals_raw, list):
@@ -105,4 +107,5 @@ async def post_mortem(
         trade_coid=ledger.coid,
         param_proposals=proposals,
         created_ts=utcnow(),
+        model=sage_model,
     )

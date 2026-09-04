@@ -153,6 +153,7 @@ class SentimentReport(BaseModel):
     event_flags: list[str] = Field(default_factory=list)
     citations: list[str] = Field(default_factory=list)
     as_of: datetime = Field(default_factory=utcnow)
+    model: str = ""
 
 
 # ---------------------------------------------------------------- debate
@@ -264,9 +265,11 @@ class PositionView(BaseModel):
     qty: float
     entry_ts: datetime
     entry_credit: float
-    current_mark: float = 0.0
-    unrealized_pnl: float = 0.0
-    unrealized_pnl_pct: float = 0.0
+    # None = no live quote available; the UI renders an honest "—" instead of
+    # fabricating a mark. Never default these to a made-up number.
+    current_mark: float | None = None
+    unrealized_pnl: float | None = None
+    unrealized_pnl_pct: float | None = None
     dte: int = 0
     exit_status: Literal[
         "held", "tp_hit", "stop_hit", "time_stop", "event_close",
@@ -305,6 +308,7 @@ class Lesson(BaseModel):
     created_ts: datetime = Field(default_factory=utcnow)
     applied_count: int = 0
     blocked_trades: list[str] = Field(default_factory=list)
+    model: str = ""
 
 
 # ---------------------------------------------------------------- ask copilot

@@ -28,8 +28,9 @@ export default function RiskPage() {
   const config = (state?.config_snapshot ?? {}) as Record<string, number | string | string[]>;
   const params = state?.param_history ?? [];
   const dayPnl = state?.kpis.today_pnl ?? 0;
-  const equity = state?.kpis.portfolio_value ?? 100000;
-  const haltLine = (Number(config.daily_halt_pct ?? 0.02) || 0.02) * equity;
+  const equity = state?.kpis.portfolio_value ?? 0;
+  const haltPct = (Number(config.daily_halt_pct ?? 0.02) || 0.02);
+  const haltLine = equity > 0 ? haltPct * equity : 0;
   const usage = Math.min(1, Math.abs(Math.min(dayPnl, 0)) / Math.abs(haltLine || 1));
 
   return (
@@ -130,24 +131,24 @@ export default function RiskPage() {
             <div className="flex items-center gap-2 mb-2">
               <Gauge size={16} className="text-red-400" />
               <h2 className="text-sm font-semibold uppercase tracking-wider text-white">
-                Daily −2% NAV Halt Line
+                Daily −{(haltPct * 100).toFixed(1)}% NAV Halt Line
               </h2>
             </div>
             <p className="text-xs text-text-secondary leading-relaxed">
-              If daily losses exceed −2.0% of portfolio equity, all positions are automatically flattened and all trading cycles are paused until market close.
+              If daily losses exceed −{(haltPct * 100).toFixed(1)}% of portfolio equity, all positions are automatically flattened and all trading cycles are paused until market close.
             </p>
 
             <div className="mt-4 flex items-baseline justify-between">
               <div>
                 <span className="text-[11px] text-text-muted block font-medium">Current Today P&amp;L</span>
                 <span className="num text-2xl font-bold text-white">
-                  {fmtUSD(dayPnl, true)}
+                  {equity > 0 ? fmtUSD(dayPnl, true) : "—"}
                 </span>
               </div>
               <div className="text-right">
                 <span className="text-[11px] text-text-muted block font-medium">Halt Threshold</span>
                 <span className="num text-sm font-bold text-red-400">
-                  {fmtUSD(-Math.abs(haltLine))}
+                  {haltLine > 0 ? fmtUSD(-Math.abs(haltLine)) : "—"}
                 </span>
               </div>
             </div>
@@ -184,11 +185,11 @@ export default function RiskPage() {
           <ul className="space-y-2 text-xs font-mono">
             <li className="flex items-center justify-between p-2 rounded-lg bg-[#060811] border border-white/5">
               <span className="text-emerald-400">Profit Target</span>
-              <span className="text-white font-bold">50% of maximum credit collected</span>
+              <span className="text-white font-bold">{(((config.profit_target_pct as number) ?? 0.5) * 100).toFixed(0)}% of maximum credit collected</span>
             </li>
             <li className="flex items-center justify-between p-2 rounded-lg bg-[#060811] border border-white/5">
               <span className="text-red-400">Hard Stop Loss</span>
-              <span className="text-white font-bold">2.0× initial net credit received</span>
+              <span className="text-white font-bold">{((config.hard_stop_multiple as number) ?? 2).toFixed(1)}× initial net credit received</span>
             </li>
             <li className="flex items-center justify-between p-2 rounded-lg bg-[#060811] border border-white/5">
               <span className="text-amber-400">Time Stop (DTE)</span>
@@ -196,7 +197,7 @@ export default function RiskPage() {
             </li>
             <li className="flex items-center justify-between p-2 rounded-lg bg-[#060811] border border-white/5">
               <span className="text-purple-400">Event Blackout</span>
-              <span className="text-white font-bold">Mandatory exit before earnings date</span>
+              <span className="text-white font-bold">No entries within {String(config.event_blackout_hours ?? 24)}h of scheduled events</span>
             </li>
           </ul>
         </div>

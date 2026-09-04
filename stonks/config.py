@@ -222,12 +222,13 @@ CAST: list[dict] = [
 ]
 
 
-# ---------------------------------------------------------------- events calendar (static, for tests / fallback)
+# ---------------------------------------------------------------- events calendar (static schedule)
 
-# Known macro events near the trading window (UTC dates; hour ≈ 13:30 ET).
-# Static fallback only — the event analyst prefers live calendar data; the
-# FOMC date below keeps the blackout machinery exercised with REAL dates.
-# Update before the scoring window; dates already past are ignored by
+# Scheduled macro events + earnings for the scoring window (UTC dates).
+# This is a STATIC, hand-maintained schedule — Alpaca's /v2/calendar exposes
+# trading days only, not CPI/FOMC/earnings timestamps, so the event analyst
+# reads from this table. It is labelled "scheduled calendar (static)" wherever
+# shown. Update before the scoring window; dates already past are ignored by
 # _hours_to_event (hours < 0 are dropped).
 EVENTS: list[dict] = [
     {"symbol": "INDEX", "kind": "FOMC", "date": "2026-09-16"},
@@ -237,8 +238,7 @@ EVENTS: list[dict] = [
     {"symbol": "SPY", "kind": "CPI", "date": "2026-09-10"},
 ]
 
-# Earnings dates for the watchlist (approximate; the event analyst prefers
-# live corporate-actions/calendar data and falls back to this table).
+# Earnings dates for the watchlist (static schedule, same discipline as EVENTS).
 EARNINGS: dict[str, str] = {
     "AAPL": "2026-10-29",
     "MSFT": "2026-10-28",

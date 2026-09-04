@@ -13,7 +13,6 @@ import os
 import shutil
 import subprocess
 
-from stonks import fixtures
 from stonks.config import ENV
 from stonks.schemas import StructureSpec
 
@@ -65,7 +64,10 @@ class AlpacaCLI:
 
     async def account_info(self) -> dict:
         if not self.available:
-            return {**fixtures.ACCOUNT_VIEW, "source": "fallback"}
+            # ABSTAIN — never fabricate an account view; reconcile treats a
+            # missing CLI surface as "no second opinion available", not a
+            # mismatch, and never against invented numbers.
+            return {"available": False, "source": "abstained"}
         out = await asyncio.to_thread(self._run, ["account", "get"])
         try:
             return json.loads(out)

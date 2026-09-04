@@ -79,6 +79,7 @@ def _fallback(
         expert_consensus=ExpertConsensus(lean=0.0, summary="Deterministic fallback: neutral"),
         event_flags=events,
         citations=[a.url for a in articles if a.url][:5],
+        model="fallback:rules",
     )
 
 
@@ -157,4 +158,5 @@ class SentiAgent:
             expert_consensus=expert_model,
             event_flags=[str(f) for f in data.get("event_flags", [])][:6],
             citations=citations,
+            model=str(model) if model else "unknown",
         )

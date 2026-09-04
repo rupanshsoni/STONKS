@@ -11,12 +11,12 @@ def _mark(view: PositionView, chain: list[OptionChainEntry]) -> float:
     for leg in view.legs:
         entry = by_symbol.get(leg.option_symbol)
         if entry is None:
-            return view.current_mark
+            return view.current_mark or 0.0
         px = entry.mid
         if px is None and entry.bid is not None and entry.ask is not None:
             px = (entry.bid + entry.ask) / 2.0
         if px is None:
-            return view.current_mark
+            return view.current_mark or 0.0
         sign = 1.0 if leg.side == "sell" else -1.0
         total += sign * px * 100.0
     return total * max(view.qty, 1.0)

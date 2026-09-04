@@ -23,11 +23,13 @@ function AgentHoverCard({
   state,
   currentTask,
   lastOutput,
+  model,
 }: {
   member: CastMember;
   state: MascotState;
   currentTask?: string;
   lastOutput?: string;
+  model?: string | null;
 }) {
   return (
     <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 w-72 rounded-2xl border border-white/10 bg-[#0B0F1E]/95 p-4 shadow-2xl backdrop-blur-2xl z-50 pointer-events-none animate-in fade-in zoom-in-95 duration-150">
@@ -60,7 +62,7 @@ function AgentHoverCard({
           </div>
           <p className="text-[11px] text-text-secondary truncate">{member.role}</p>
           <span className="inline-block mt-1 font-mono text-[10px] text-text-muted">
-            {member.model}
+            {model ?? member.model}
           </span>
         </div>
       </div>
@@ -142,7 +144,7 @@ export default function RightAgentSidebar({
           </div>
           <div className="flex items-center gap-2">
             <span className="pill text-[10px] border-white/10 bg-white/5 text-text-muted">
-              8 Agents Live
+              {deskState?.agents?.length ?? CAST.length} Agents
             </span>
             {onClose && (
               <button
@@ -243,6 +245,7 @@ export default function RightAgentSidebar({
                     state={currentState}
                     currentTask={card?.task}
                     lastOutput={card?.last_output}
+                    model={card?.model}
                   />
                 )}
               </div>
@@ -258,7 +261,7 @@ export default function RightAgentSidebar({
               12 Risk Gates Active
             </span>
             <span className="font-mono text-[10px] text-cyan-400">
-              30m cycle
+              {deskState?.paused ? "paused" : deskState?.test_mode ? "test mode" : "30m cycle"}
             </span>
           </div>
         </div>

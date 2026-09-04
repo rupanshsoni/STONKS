@@ -72,7 +72,7 @@ export default function TopBar({
         {/* Paper Account Badge */}
         <div className="hidden sm:inline-flex h-[26px] items-center gap-1.5 rounded-full border border-cyan-500/30 bg-cyan-500/10 px-2.5 font-mono text-[10.5px] font-semibold text-cyan-400 leading-none">
           <Radio size={11} className="shrink-0 text-cyan-400" />
-          <span className="leading-none">PAPER · {account?.account_number ?? "ACCT-01"}</span>
+          <span className="leading-none">PAPER · {account?.account_number ?? "…"}</span>
         </div>
 
         {/* SSE Stream Health Status */}

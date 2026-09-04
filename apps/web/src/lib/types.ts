@@ -128,9 +128,9 @@ export interface PositionView {
   qty: number;
   entry_ts: string;
   entry_credit: number;
-  current_mark: number;
-  unrealized_pnl: number;
-  unrealized_pnl_pct: number;
+  current_mark: number | null;
+  unrealized_pnl: number | null;
+  unrealized_pnl_pct: number | null;
   dte: number;
   exit_status:
     | "held"

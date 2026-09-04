@@ -16,6 +16,7 @@ from stonks.alpaca.client import AlpacaClient
 from stonks.config import (
     CAST,
     ENV,
+    LLM_ROUTES,
     RISK,
     load_config_history,
 )
@@ -120,14 +121,38 @@ async def state() -> DeskState:
     except Exception:
         pass
     open_risk = 0.0
+    # Live marking: fetch current option mids for every open leg in one batch.
+    occ_symbols = sorted({leg.option_symbol for l in ledgers for leg in l.spec.legs})
+    try:
+        marks = await _client.option_marks(occ_symbols) if occ_symbols else {}
+    except Exception:
+        marks = {}
     for l in ledgers:
         open_risk += l.spec.premium_risk
         dte = max(l.spec.dte - max((utcnow() - l.entry_ts).days, 0), 0)
+        # Current structure credit = sell legs mid - buy legs mid (per contract).
+        leg_mids = [marks.get(leg.option_symbol) for leg in l.spec.legs]
+        if leg_mids and all(m is not None for m in leg_mids):
+            current_credit = sum(
+                (m or 0.0) if leg.side == "sell" else -(m or 0.0)
+                for leg, m in zip(l.spec.legs, leg_mids)
+            )
+            current_credit = round(current_credit, 4)
+            unrealized = round(
+                (l.entry_credit - current_credit) * 100.0 * l.spec.contracts, 2
+            )
+            entry_cost = l.entry_credit * 100.0 * l.spec.contracts
+            pnl_pct = round(unrealized / max(entry_cost, 1.0), 4)
+        else:
+            # No live quote — surface honestly, never fabricate a mark.
+            current_credit = None
+            unrealized = None
+            pnl_pct = None
         positions.append({
             "id": l.coid, "coid": l.coid, "symbol": l.symbol, "kind": l.spec.kind,
             "qty": float(l.spec.contracts), "entry_ts": l.entry_ts.isoformat(),
-            "entry_credit": l.entry_credit, "current_mark": l.entry_credit,
-            "unrealized_pnl": 0.0, "unrealized_pnl_pct": 0.0, "dte": dte,
+            "entry_credit": l.entry_credit, "current_mark": current_credit,
+            "unrealized_pnl": unrealized, "unrealized_pnl_pct": pnl_pct, "dte": dte,
             "exit_status": "held", "legs": [leg.model_dump() for leg in l.spec.legs],
             "thesis": l.thesis, "verdict": l.verdict.model_dump(),
         })
@@ -275,10 +300,17 @@ async def risk_endpoint() -> dict:
 
 
 def _agent_model(agent_id: str) -> str | None:
-    mapping = {
-        "senti": "z-ai/glm-5.2:free", "toro": "z-ai/glm-5.2:free",
-        "ursa": "z-ai/glm-5.2:free", "verdi": "minimax/minimax-m3:free",
-        "sage": "minimax/minimax-m3:free",
-        "gate": None, "xq": None, "prime": "z-ai/glm-5.2:free (narration)",
-    }
-    return mapping.get(agent_id)
+    """Live model label from the actual route table — no duplicated static dict."""
+    if agent_id == "gate":
+        return None  # deterministic kernel, no LLM
+    if agent_id == "xq":
+        return None  # deterministic executor
+    if agent_id == "prime":
+        route = LLM_ROUTES.get("narrator")
+        return f"{route.model} (narration)" if route else "narrator"
+    route_key = {"senti": "senti", "toro": "debate", "ursa": "debate",
+                 "verdi": "judge", "sage": "sage"}.get(agent_id)
+    if route_key is None:
+        return None
+    route = LLM_ROUTES.get(route_key)
+    return route.model if route else None

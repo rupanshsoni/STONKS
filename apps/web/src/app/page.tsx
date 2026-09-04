@@ -32,6 +32,23 @@ import { useDeskStore } from "@/lib/store";
 import { fmtUSD, structureTag, timeAgo } from "@/lib/format";
 import type { JournalEvent } from "@/lib/types";
 
+// Ticking countdown to a future ISO timestamp; returns null when no target.
+function useCountdown(iso: string | null | undefined): string | null {
+  const [now, setNow] = useState(() => Date.now());
+  React.useEffect(() => {
+    if (!iso) return;
+    const t = setInterval(() => setNow(Date.now()), 1000);
+    return () => clearInterval(t);
+  }, [iso]);
+  if (!iso) return null;
+  const diff = new Date(iso).getTime() - now;
+  if (!(diff > 0)) return null;
+  const h = Math.floor(diff / 3600000);
+  const m = Math.floor((diff % 3600000) / 60000);
+  const s = Math.floor((diff % 60000) / 1000);
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 // Glowing SVG Mini-Sparkline with Obsidian Blue theme styling
 function MiniSparkline({
   color = "#00FF87",
@@ -217,15 +234,23 @@ function FeedCard({ e }: { e: JournalEvent }) {
             </div>
           )}
 
-          {/* Decision card debate conviction scores */}
+          {/* Decision card debate conviction scores (render only when journaled) */}
           {isDecision && e.data.verdict && (
             <div className="mt-2 flex flex-wrap items-center gap-1.5 text-xs">
-              <span className="pill text-[9.5px] border-emerald-500/30 bg-emerald-500/10 text-emerald-400">
-                TORO {(e.data.rounds?.[0]?.conviction ?? 0.7).toFixed(1)}
-              </span>
-              <span className="pill text-[9.5px] border-red-500/30 bg-red-500/10 text-red-400">
-                URSA {(e.data.rounds?.[1]?.conviction ?? 0.3).toFixed(1)}
-              </span>
+              {(e.data.rounds ?? [])
+                .filter((r) => r && typeof r.conviction === "number")
+                .map((r, i) => (
+                  <span
+                    key={i}
+                    className={`pill text-[9.5px] ${
+                      r.agent === "ursa"
+                        ? "border-red-500/30 bg-red-500/10 text-red-400"
+                        : "border-emerald-500/30 bg-emerald-500/10 text-emerald-400"
+                    }`}
+                  >
+                    {(r.agent ?? (i === 0 ? "TORO" : "URSA")).toUpperCase()} {r.conviction.toFixed(1)}
+                  </span>
+                ))}
               <span className="pill text-[9.5px] border-purple-500/30 bg-purple-500/10 text-purple-300">
                 VERDI: {e.data.verdict.direction} ({e.data.verdict.conviction.toFixed(2)})
               </span>
@@ -258,7 +283,9 @@ function PositionsTable() {
         <div>
           <h3 className="font-semibold text-white text-xs">No Open Structures</h3>
           <p className="text-[11px] text-text-muted mt-0.5">
-            The autonomous desk is scanning the options chain. Next cycle triggers in 30m.
+            {state?.market?.open
+              ? "The desk is scanning the options chain — next cycle every 30m."
+              : "Market closed — the desk sleeps and reopens with the next session."}
           </p>
         </div>
       </div>
@@ -282,7 +309,8 @@ function PositionsTable() {
         </thead>
         <tbody className="divide-y divide-white/5">
           {positions.map((p) => {
-            const isProfit = p.unrealized_pnl >= 0;
+            const marked = p.current_mark != null && p.unrealized_pnl != null;
+            const isProfit = marked && (p.unrealized_pnl as number) >= 0;
             return (
               <tr
                 key={p.coid}
@@ -306,16 +334,22 @@ function PositionsTable() {
                   {fmtUSD(p.entry_credit)}
                 </td>
                 <td className="num px-4 py-3 text-text-secondary">
-                  {fmtUSD(p.current_mark)}
+                  {marked ? fmtUSD(p.current_mark as number) : "—"}
                 </td>
                 <td className="px-4 py-3">
-                  <span
-                    className={`pill font-mono text-[11px] ${
-                      isProfit ? "pill-profit" : "pill-loss"
-                    }`}
-                  >
-                    {isProfit ? "▲" : "▼"} {fmtUSD(p.unrealized_pnl, true)}
-                  </span>
+                  {marked ? (
+                    <span
+                      className={`pill font-mono text-[11px] ${
+                        isProfit ? "pill-profit" : "pill-loss"
+                      }`}
+                    >
+                      {isProfit ? "▲" : "▼"} {fmtUSD(p.unrealized_pnl as number, true)}
+                    </span>
+                  ) : (
+                    <span className="pill font-mono text-[11px] border-white/10 bg-white/5 text-text-muted">
+                      marking…
+                    </span>
+                  )}
                 </td>
                 <td className="num px-4 py-3 font-mono text-[11px] text-text-secondary">
                   <span className="inline-flex items-center gap-1">
@@ -345,27 +379,34 @@ export default function OverviewPage() {
 
   const kpis = state?.kpis;
   const rawCurve = state?.equity_curve ?? [];
+  const market = state?.market;
+  const baseline = state?.account?.baseline ?? 100000;
 
-  // Generate continuous smooth baseline curve
-  const curve =
-    rawCurve.length > 1
-      ? rawCurve.map((p) => ({
-          ts: new Date(p.ts).getTime(),
-          equity: p.equity,
-        }))
-      : [
-          { ts: Date.now() - 3600000 * 5, equity: 100000 },
-          { ts: Date.now() - 3600000 * 4, equity: 100250 },
-          { ts: Date.now() - 3600000 * 3, equity: 100180 },
-          { ts: Date.now() - 3600000 * 2, equity: 100720 },
-          { ts: Date.now() - 3600000 * 1, equity: 100480 },
-          { ts: Date.now(), equity: kpis?.portfolio_value ?? 101240 },
-        ];
+  // Live equity curve only — no fabricated backfill. When the desk has not
+  // completed enough cycles to draw a curve, we show the single live point
+  // state honestly instead of inventing a history.
+  const curve = rawCurve.map((p) => ({
+    ts: new Date(p.ts).getTime(),
+    equity: p.equity,
+  }));
 
-  const currentEquity = kpis?.portfolio_value ?? 100000;
+  const currentEquity = kpis?.portfolio_value ?? 0;
   const dayPnl = kpis?.today_pnl ?? 0;
-  const dailyHaltLine = 2000; // -2% of $100k
-  const dayLossUsedPct = Math.min(100, Math.max(0, (Math.abs(Math.min(dayPnl, 0)) / dailyHaltLine) * 100));
+  const haltPct = Number(state?.config_snapshot?.daily_halt_pct ?? 0.02);
+  const dailyHaltLine = currentEquity > 0 ? currentEquity * haltPct : 0;
+  const dayLossUsedPct =
+    dailyHaltLine > 0
+      ? Math.min(100, Math.max(0, (Math.abs(Math.min(dayPnl, 0)) / dailyHaltLine) * 100))
+      : 0;
+  const dayStartEquity = currentEquity - dayPnl;
+  const riskUsedPct = kpis?.risk_used_pct ?? 0;
+  const riskCapPct = Number(state?.config_snapshot?.max_portfolio_risk_pct ?? 0.05);
+  const openRiskUsd = currentEquity * riskUsedPct;
+  const gatePassed = (state?.gate_stats ?? []).reduce((a, g) => a + g.passed, 0);
+  const gateRejected = (state?.gate_stats ?? []).reduce((a, g) => a + g.rejected, 0);
+  const gateTotal = gatePassed + gateRejected;
+  const nextClock = market?.open ? market?.next_close : market?.next_open;
+  const clockValue = useCountdown(nextClock) ?? (nextClock ? new Date(nextClock).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) : "—");
 
   return (
     <Shell>
@@ -390,7 +431,7 @@ export default function OverviewPage() {
                 </span>
                 <div className="flex items-baseline gap-2">
                   <span className="num text-2xl md:text-3xl font-extrabold text-white tracking-tight">
-                    {fmtUSD(currentEquity)}
+                    {currentEquity > 0 ? fmtUSD(currentEquity) : "—"}
                   </span>
                   <span className="text-xs font-mono font-semibold text-text-secondary">
                     USD
@@ -424,8 +465,9 @@ export default function OverviewPage() {
             </div>
           </div>
 
-          {/* Glowing Continuous Line Chart */}
+          {/* Glowing Continuous Line Chart — live points only */}
           <div className="h-[280px] w-full min-h-[280px]">
+            {curve.length > 1 ? (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={curve} margin={{ top: 10, right: 10, left: -15, bottom: 0 }}>
                 <defs>
@@ -447,23 +489,27 @@ export default function OverviewPage() {
                   tickLine={false}
                 />
                 <YAxis
-                  domain={["dataMin - 300", "dataMax + 400"]}
+                  domain={["auto", "auto"]}
                   stroke="#1c2444"
                   tick={{ fontSize: 10.5, fill: "#5a6480" }}
                   tickLine={false}
                   tickFormatter={(v) => `$${(v / 1000).toFixed(1)}k`}
+                  allowDataOverflow={false}
+                  padding={{ top: 20, bottom: 20 }}
                 />
-                <ReferenceLine
-                  y={100000}
-                  stroke="#2a3560"
-                  strokeDasharray="3 3"
-                  label={{
-                    value: "Baseline $100k",
-                    fill: "#5a6480",
-                    fontSize: 10,
-                    position: "insideTopRight",
-                  }}
-                />
+                {currentEquity > 0 && (
+                  <ReferenceLine
+                    y={baseline}
+                    stroke="#2a3560"
+                    strokeDasharray="3 3"
+                    label={{
+                      value: `Baseline ${fmtUSD(baseline)}`,
+                      fill: "#5a6480",
+                      fontSize: 10,
+                      position: "insideTopRight",
+                    }}
+                  />
+                )}
                 <Tooltip
                   content={({ active, payload }) => {
                     if (active && payload && payload.length) {
@@ -496,6 +542,16 @@ export default function OverviewPage() {
                 />
               </AreaChart>
             </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full flex flex-col items-center justify-center gap-2 text-center">
+                <span className="num text-lg font-bold text-white">
+                  {currentEquity > 0 ? fmtUSD(currentEquity) : "—"}
+                </span>
+                <span className="text-[11px] text-text-muted">
+                  Live equity — curve accumulates as the desk completes cycles
+                </span>
+              </div>
+            )}
           </div>
         </section>
 
@@ -533,22 +589,31 @@ export default function OverviewPage() {
               </div>
             </div>
 
-            {/* Gauge 1: Initial Deposit Limit Level */}
+            {/* Gauge 1: Open Risk vs Portfolio Cap (live) */}
             <div className="mb-4">
               <div className="flex items-center justify-between text-xs mb-1.5">
-                <span className="font-medium text-text-secondary text-[11.5px]">Initial Deposit Limit Level</span>
-                <span className="num font-mono text-[11px] text-cyan-400 font-bold">Safe (0% drawn)</span>
+                <span className="font-medium text-text-secondary text-[11.5px]">Open Risk / Portfolio Cap</span>
+                <span className="num font-mono text-[11px] text-cyan-400 font-bold">
+                  {riskCapPct > 0
+                    ? `${Math.min(100, (riskUsedPct / riskCapPct) * 100).toFixed(1)}% of cap`
+                    : "—"}
+                </span>
               </div>
               <div className="h-2 w-full rounded-full bg-white/5 overflow-hidden p-0.5 border border-white/5">
-                <div className="h-full rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(0,229,255,0.4)]" style={{ width: "95%" }} />
+                <div
+                  className="h-full rounded-full bg-cyan-400 shadow-[0_0_8px_rgba(0,229,255,0.4)]"
+                  style={{
+                    width: `${riskCapPct > 0 ? Math.max(2, Math.min(100, (riskUsedPct / riskCapPct) * 100)) : 0}%`,
+                  }}
+                />
               </div>
               <div className="flex items-center justify-between text-[10px] text-text-muted mt-1.5 font-mono">
-                <span>Initial: $100,000.00</span>
-                <span>Max Drawdown: $95,000.00</span>
+                <span>Open risk: {currentEquity > 0 ? fmtUSD(openRiskUsd) : "—"}</span>
+                <span>Cap: {(riskCapPct * 100).toFixed(0)}% NAV</span>
               </div>
             </div>
 
-            {/* Gauge 2: Daily Loss Limit Level (-2.0% Daily Halt) */}
+            {/* Gauge 2: Daily Loss Limit Level (live halt bound) */}
             <div className="mb-4">
               <div className="flex items-center justify-between text-xs mb-1.5">
                 <span className="font-medium text-text-secondary text-[11.5px]">Daily Loss Limit Level</span>
@@ -565,116 +630,120 @@ export default function OverviewPage() {
                 />
               </div>
               <div className="flex items-center justify-between text-[10px] text-text-muted mt-1.5 font-mono">
-                <span>Entry: $100,000.00</span>
-                <span className="text-[#FF4D5E]">Halt: -$2,000.00 (-2%)</span>
+                <span>Session open: {currentEquity > 0 ? fmtUSD(dayStartEquity) : "—"}</span>
+                <span className="text-[#FF4D5E]">
+                  Halt: -{currentEquity > 0 ? fmtUSD(dailyHaltLine) : "—"} (-{(haltPct * 100).toFixed(1)}%)
+                </span>
               </div>
             </div>
           </div>
 
-          {/* Bottom Countdown Strip */}
+          {/* Bottom Countdown Strip — live Alpaca clock */}
           <div className="pt-3 border-t border-white/5 flex items-center justify-between text-xs">
             <div className="flex items-center gap-1.5 text-text-muted text-[11px]">
               <Clock size={13} className="text-cyan-400" />
-              <span>Daily Loss Reset</span>
+              <span>{market?.open ? "Market closes" : market?.phase === "pre" ? "Pre-market — opens in" : "Next market open"}</span>
             </div>
             <span className="num font-mono text-xs font-bold text-white bg-white/5 px-2 py-0.5 rounded border border-white/10">
-              12:36:36
+              {clockValue}
             </span>
           </div>
         </section>
       </div>
 
       {/* =================================================================== */}
-      {/* 2. MIDDLE ROW: 4 Metric Cards                                       */}
+      {/* 2. MIDDLE ROW: 4 Metric Cards (live)                                */}
       {/* =================================================================== */}
       <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 mb-4">
         <MetricCard
-          label="Average Win"
-          value={kpis ? fmtUSD(Math.max(kpis.today_pnl, 987.47)) : "$987.47"}
-          sub="Win Delta: +$1,240.50"
-          icon={TrendingUp}
-          pillText="+1.39%"
-          pillPositive={true}
-          sparklineColor="#00E5FF"
-          sparklineVariant="up"
+          label="Day P&L"
+          value={kpis ? fmtUSD(dayPnl, true) : "—"}
+          sub={kpis ? "Live from Alpaca account" : "Waiting for desk connection"}
+          icon={dayPnl >= 0 ? TrendingUp : ArrowDownRight}
+          pillText={kpis ? `${dayPnl >= 0 ? "+" : ""}${dayStartEquity > 0 ? ((dayPnl / dayStartEquity) * 100).toFixed(2) : "0.00"}%` : undefined}
+          pillPositive={kpis ? dayPnl >= 0 : null}
+          sparklineColor={dayPnl >= 0 ? "#00E5FF" : "#FF4D5E"}
+          sparklineVariant={dayPnl >= 0 ? "up" : "down"}
         />
 
         <MetricCard
-          label="Average Loss"
-          value="-$229.56"
-          sub="Structural Cap ≤ 1% NAV"
-          icon={ArrowDownRight}
-          pillText="-2.91%"
-          pillPositive={false}
-          sparklineColor="#FF4D5E"
-          sparklineVariant="down"
+          label="Total P&L"
+          value={kpis ? fmtUSD(kpis.total_pnl, true) : "—"}
+          sub={kpis ? `vs ${fmtUSD(baseline)} baseline` : "Waiting for desk connection"}
+          icon={kpis && kpis.total_pnl >= 0 ? TrendingUp : ArrowDownRight}
+          pillText={kpis ? (kpis.total_pnl >= 0 ? "In profit" : "Drawdown") : undefined}
+          pillPositive={kpis ? kpis.total_pnl >= 0 : null}
+          sparklineColor={kpis && kpis.total_pnl >= 0 ? "#00FF87" : "#FF4D5E"}
+          sparklineVariant={kpis && kpis.total_pnl >= 0 ? "up" : "down"}
         />
 
         <MetricCard
-          label="Win Ratio"
-          value="66.7%"
-          sub="4 of 6 Structures Closed"
-          icon={Sparkles}
-          pillText="Passes"
-          pillPositive={true}
-          sparklineColor="#00FF87"
-          sparklineVariant="wave"
-        />
-
-        <MetricCard
-          label="Risk / Reward"
-          value="1:2.4"
-          sub="1.2% / 5.0% NAV in Play"
+          label="Open Risk"
+          value={kpis ? `${(riskUsedPct * 100).toFixed(2)}% NAV` : "—"}
+          sub={kpis ? `${fmtUSD(openRiskUsd)} premium at risk` : "Waiting for desk connection"}
           icon={Gauge}
-          pillText="Gate Pass"
-          pillPositive={true}
+          pillText={kpis ? `Cap ${(riskCapPct * 100).toFixed(0)}%` : undefined}
+          pillPositive={riskCapPct > 0 && riskUsedPct <= riskCapPct ? true : riskCapPct > 0 ? false : null}
           sparklineColor="#38BDF8"
           sparklineVariant="steady"
+        />
+
+        <MetricCard
+          label="Gate Decisions"
+          value={gateTotal > 0 ? `${gatePassed}/${gateTotal}` : "—"}
+          sub={gateTotal > 0 ? `${gateRejected} honest rejection${gateRejected === 1 ? "" : "s"} journaled` : "No cycles completed yet"}
+          icon={Sparkles}
+          pillText={gateTotal > 0 ? "12-gate kernel" : undefined}
+          pillPositive={null}
+          sparklineColor="#00FF87"
+          sparklineVariant="wave"
         />
       </div>
 
       {/* =================================================================== */}
-      {/* 3. GOAL OVERVIEW & COMPLIANCE SECTION                               */}
+      {/* 3. DESK DISCIPLINE SECTION (live gate + exit stats)                 */}
       {/* =================================================================== */}
       <div className="mb-4">
         <div className="flex items-center gap-2 mb-2.5">
           <CheckCircle2 size={14} className="text-cyan-400" />
           <h2 className="text-xs font-bold uppercase tracking-wider text-white">
-            Goal Overview &amp; Compliance
+            Desk Discipline
           </h2>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3.5">
           <div className="card p-4 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-white">Minimum Trading Days</span>
-              <span className="pill text-[9.5px] pill-profit">Passes</span>
+              <span className="text-xs font-semibold text-white">Position Size Bound</span>
+              <span className="pill text-[9.5px] pill-profit">Enforced</span>
             </div>
             <div className="flex items-baseline justify-between text-xs mt-2 pt-2 border-t border-white/5">
-              <span className="text-text-muted text-[11px]">Minimum: <strong className="text-white">1 Days</strong></span>
-              <span className="num font-bold text-cyan-400">Current: 1 Days</span>
+              <span className="text-text-muted text-[11px]">Per structure: <strong className="text-white">{(((state?.config_snapshot?.max_position_size_pct as number) ?? 0.01) * 100).toFixed(2)}% NAV</strong></span>
+              <span className="num font-bold text-cyan-400">Code gate, not a prompt</span>
             </div>
           </div>
 
           <div className="card p-4 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-white">Profit Target ($400)</span>
-              <span className="pill text-[9.5px] pill-profit">Passes</span>
+              <span className="text-xs font-semibold text-white">Exit Ladder</span>
+              <span className="pill text-[9.5px] pill-profit">Armed</span>
             </div>
             <div className="flex items-baseline justify-between text-xs mt-2 pt-2 border-t border-white/5">
-              <span className="text-text-muted text-[11px]">Minimum: <strong className="text-white">US$400.00</strong></span>
-              <span className="num font-bold text-cyan-400">Current: US$1,240.50</span>
+              <span className="text-text-muted text-[11px]">TP <strong className="text-white">{(((state?.config_snapshot?.profit_target_pct as number) ?? 0.5) * 100).toFixed(0)}% credit</strong> · Stop <strong className="text-white">{((state?.config_snapshot?.hard_stop_multiple as number) ?? 2).toFixed(1)}×</strong></span>
+              <span className="num font-bold text-cyan-400">Runs before entries</span>
             </div>
           </div>
 
           <div className="card p-4 flex flex-col justify-between">
             <div className="flex items-center justify-between mb-2">
-              <span className="text-xs font-semibold text-white">Initial Balance Loss Limit</span>
-              <span className="pill text-[9.5px] pill-profit">Passes</span>
+              <span className="text-xs font-semibold text-white">Daily Halt</span>
+              <span className="pill text-[9.5px] pill-profit">Standing</span>
             </div>
             <div className="flex items-baseline justify-between text-xs mt-2 pt-2 border-t border-white/5">
-              <span className="text-text-muted text-[11px]">Permitted: <strong className="text-white">US$5,000.00</strong></span>
-              <span className="num font-bold text-cyan-400">Current Loss: US$0.00</span>
+              <span className="text-text-muted text-[11px]">Flatten at <strong className="text-white">-{(haltPct * 100).toFixed(1)}% NAV</strong></span>
+              <span className="num font-bold text-cyan-400">
+                {state?.halts?.length ? "Entries halted" : "Not tripped"}
+              </span>
             </div>
           </div>
         </div>
