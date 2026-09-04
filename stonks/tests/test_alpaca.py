@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 
 import pytest
 
@@ -86,20 +87,33 @@ class TestTestModeData:
 
 
 class TestExecutor:
-    def test_negative_credit_limit_convention(self):
+    def test_mleg_credit_convention(self):
+        """Multi-leg credit: order_class 'mleg' (Alpaca's enum — NOT
+        'multi_leg'), negative limit = credit floor, string qty/price."""
         payload = build_payload(make_spec(), "stonks-bps-SPY-TEST")
-        assert payload["limit_price"] == -1.5
-        assert payload["order_class"] == "multi_leg"
+        assert payload["order_class"] == "mleg"
+        assert payload["limit_price"] == "-1.5"
+        assert isinstance(payload["qty"], str)
         assert len(payload["legs"]) == 2
+        assert all(isinstance(l["ratio_qty"], str) for l in payload["legs"])
+        for leg in payload["legs"]:
+            assert set(leg) == {"symbol", "side", "ratio_qty"}
 
     def test_csp_simple_order(self):
+        """Single-leg CSP: simple class, positive limit (negative-credit
+        notation is mleg-only), sell_to_open intent."""
         spec = make_spec(
             kind="csp", intent="csp",
             legs=[Leg(option_symbol="P1", side="sell", ratio=1, strike=450.0, option_type="put")],
         )
         payload = build_payload(spec, "c")
         assert payload["order_class"] == "simple" and payload["side"] == "sell"
-        assert payload["limit_price"] < 0
+        assert payload["position_intent"] == "sell_to_open"
+        assert payload["limit_price"] == "1.5"  # positive single-leg sell limit
+
+    def test_mleg_positions_qty_strings(self):
+        payload = build_payload(make_spec(), "c")
+        assert payload["qty"] == "2"
 
     def test_place_fills_in_test_mode(self):
         ex = Executor(test_mode=True)
@@ -109,15 +123,40 @@ class TestExecutor:
 
     def test_duplicate_coid_raises(self):
         ex = Executor(test_mode=True)
-        asyncio.run(ex.place(make_spec(), "stonks-dup"))
+        asyncio.run(ex.place(make_spec(), "stonks-dup2"))
         with pytest.raises((SurfaceError, ExecutionHalt)):
-            asyncio.run(ex.place(make_spec(), "stonks-dup"))
+            asyncio.run(ex.place(make_spec(), "stonks-dup2"))
 
-    def test_close_position(self):
+    def test_close_position_positive_debit(self):
+        """Closing a credit structure = buying it back: positive debit limit."""
         ex = Executor(test_mode=True)
         r = asyncio.run(ex.close_position(make_spec()))
         assert r.status == "filled"
         assert r.coid.startswith("stonks-close-bps-SPY")
+        assert isinstance(r.raw["limit_price"], str)
+        assert float(r.raw["limit_price"]) > 0
+
+    def test_close_position_custom_debit_cap(self):
+        """max_debit prices the buyback (hard-stop closes must be fillable:
+        a static multiple of entry credit never fills an expanded spread)."""
+        ex = Executor(test_mode=True)
+        spec = make_spec(credit=1.5, width=20.0)
+        r = asyncio.run(ex.close_position(spec, max_debit=3.25))
+        assert r.raw["limit_price"] == "3.25"
+        # default cap: min(width, max(2.5x credit, 0.05)) -> 3.75
+        r2 = asyncio.run(ex.close_position(spec))
+        assert float(r2.raw["limit_price"]) == 3.75
+
+    def test_close_csp_simple_buy_to_close(self):
+        spec = make_spec(
+            kind="csp", intent="csp",
+            legs=[Leg(option_symbol="P1", side="sell", ratio=1, strike=450.0, option_type="put")],
+        )
+        ex = Executor(test_mode=True)
+        r = asyncio.run(ex.close_position(spec))
+        assert r.raw["order_class"] == "simple"
+        assert r.raw["side"] == "buy"
+        assert r.raw["position_intent"] == "buy_to_close"
 
     def test_dry_run_ok(self):
         ex = Executor(test_mode=True)
@@ -153,10 +192,22 @@ class TestReconcile:
     def test_match_in_test_mode(self):
         result = asyncio.run(reconcile(AlpacaClient(test_mode=True), AlpacaCLI(test_mode=True)))
         assert result["match"] is True
+        assert result.get("abstained") is True  # CLI absent → abstains, no false halt
 
     def test_mismatch_detected(self):
         cli = AlpacaCLI(test_mode=True)
-        cli._fallback_positions = [{"symbol": "X1", "qty": 2.0}]
+        cli.available = True  # force the real-CLI path
+        cli._run = lambda args, timeout=30: json.dumps(
+            [{"symbol": "X1", "qty": 2}] if "--dry-run" not in args else "{}"
+        )
         result = asyncio.run(reconcile(AlpacaClient(test_mode=True), cli))
         assert result["match"] is False
         assert result["cli"] == {"X1": 2.0}
+
+    def test_cli_match_confirms(self):
+        cli = AlpacaCLI(test_mode=True)
+        cli.available = True
+        cli._run = lambda args, timeout=30: "[]"
+        result = asyncio.run(reconcile(AlpacaClient(test_mode=True), cli))
+        assert result["match"] is True
+        assert "abstained" not in result

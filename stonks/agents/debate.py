@@ -171,7 +171,7 @@ async def judge(
             conviction=conviction,
             key_factor=str(data.get("key_factor", ""))[:200],
             weakest_link=str(data.get("weakest_link", ""))[:200],
-            model=data.get("_model", "gpt-4o"),
+            model=data.get("_model", "minimax/minimax-m3:free"),
         )
     except LLMBusError:
         net = 0.0

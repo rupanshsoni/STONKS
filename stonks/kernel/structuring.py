@@ -73,6 +73,102 @@ def _pick_leg(
     return None
 
 
+def _wing_candidates(
+    chain: list[OptionChainEntry],
+    option_type: str,
+    short: OptionChainEntry,
+    target_delta: float,
+    today,
+) -> list[OptionChainEntry]:
+    """Wing candidates beyond the short strike, doctrinal order (nearest to
+    target delta first) — the budget filter walks this list tighter if needed."""
+    pool = [
+        e for e in chain
+        if e.option_type == option_type
+        and e.delta is not None
+        and RISK.target_dte_min <= _dte_of(e, today) <= RISK.target_dte_max
+        and _liquid(e)
+    ]
+    if option_type == "put":
+        pool = [e for e in pool if e.strike < short.strike]
+    else:
+        pool = [e for e in pool if e.strike > short.strike]
+    pool.sort(key=lambda e: abs(abs(e.delta) - target_delta))
+    # must satisfy the minimum wing width
+    return [e for e in pool if abs(short.strike - e.strike) >= RISK.min_wing_width]
+
+
+def _pick_wing(
+    chain: list[OptionChainEntry],
+    option_type: str,
+    short: OptionChainEntry,
+    target_delta: float,
+    today,
+    nav: float,
+) -> OptionChainEntry | None:
+    """Budget-aware wing for a TWO-LEG credit spread.
+
+    Doctrine: the 0.08Δ wing is preferred; the POSITION_SIZE budget is the
+    hard constraint. Walk from the doctrinal wing toward the short strike and
+    take the first whose ACTUAL max-loss (width − net credit) fits at 1 lot.
+    """
+    budget = RISK.max_position_size_pct * nav
+    for wing in _wing_candidates(chain, option_type, short, target_delta, today):
+        width = abs(short.strike - wing.strike)
+        credit = (_mid(short) or 0.0) - (_mid(wing) or 0.0)
+        max_loss = width - credit
+        if max_loss > 0 and max_loss * 100.0 <= budget:
+            return wing
+    return None
+
+
+def _pick_condor_wings(
+    chain: list[OptionChainEntry],
+    short_call: OptionChainEntry,
+    short_put: OptionChainEntry,
+    target_delta: float,
+    today,
+    nav: float,
+) -> tuple[OptionChainEntry, OptionChainEntry] | None:
+    """Budget-aware wing PAIR for the iron condor.
+
+    The condor's max loss is max(call_width, put_width) − total net credit —
+    both wings' premiums feed the credit, so wings must be chosen jointly.
+    Try the doctrinal (0.08Δ) pair first; then tighten each side toward its
+    short strike until the whole structure fits the size budget.
+    """
+    budget = RISK.max_position_size_pct * nav
+    call_wings = _wing_candidates(chain, "call", short_call, target_delta, today)
+    put_wings = _wing_candidates(chain, "put", short_put, target_delta, today)
+    if not call_wings or not put_wings:
+        return None
+    sc_mid, sp_mid = _mid(short_call) or 0.0, _mid(short_put) or 0.0
+
+    def fits(wc: OptionChainEntry, wp: OptionChainEntry) -> bool:
+        credit = (sc_mid + sp_mid) - (_mid(wc) or 0.0) - (_mid(wp) or 0.0)
+        width = max(wc.strike - short_call.strike, short_put.strike - wp.strike)
+        max_loss = width - credit
+        return max_loss > 0 and max_loss * 100.0 <= budget
+
+    # doctrinal pair first
+    if fits(call_wings[0], put_wings[0]):
+        return call_wings[0], put_wings[0]
+    # joint walk: tighten the wider side step by step (each list is sorted
+    # doctrinal→tighter; index i,j; advance the side that is wider)
+    i = j = 0
+    for _ in range(len(call_wings) + len(put_wings)):
+        if i >= len(call_wings) or j >= len(put_wings):
+            return None
+        wc, wp = call_wings[i], put_wings[j]
+        if fits(wc, wp):
+            return wc, wp
+        if (wc.strike - short_call.strike) >= (short_put.strike - wp.strike):
+            i += 1
+        else:
+            j += 1
+    return None
+
+
 def _spread_legs(short: OptionChainEntry, wing: OptionChainEntry) -> tuple[Leg, Leg]:
     return (
         Leg(option_symbol=short.option_symbol, side="sell", ratio=1,
@@ -96,6 +192,13 @@ def _lesson_blocks(lessons: list[Lesson] | None, symbol: str, iv_rank: float | N
         if relevant and low_iv:
             return True
     return False
+
+
+def _fits_size_gate(premium_risk: float, nav: float) -> bool:
+    """Sizing and the POSITION_SIZE gate must agree: never propose a
+    structure the gate must reject (the sizing floor exists for tiny
+    accounts; on the desk's NAV it would only generate noise rejections)."""
+    return premium_risk <= RISK.max_position_size_pct * nav
 
 
 def pick_structure(
@@ -137,6 +240,8 @@ def pick_structure(
             if contracts < 1:
                 return None
             max_loss = short_put.strike - credit
+            if not _fits_size_gate(max_loss * contracts * 100.0, nav):
+                return None
             return StructureSpec(
                 kind="csp", intent="csp", symbol=symbol,
                 legs=[Leg(option_symbol=short_put.option_symbol, side="sell", ratio=1,
@@ -151,8 +256,10 @@ def pick_structure(
 
     if verdict.direction == "BULLISH":
         short_put = _pick_leg(chain, "put", RISK.delta_short, today)
-        wing_put = _pick_leg(chain, "put", RISK.delta_wing, today)
-        if short_put is None or wing_put is None or wing_put.strike >= short_put.strike:
+        if short_put is None:
+            return None
+        wing_put = _pick_wing(chain, "put", short_put, RISK.delta_wing, today, nav)
+        if wing_put is None:
             return None
         credit = (_mid(short_put) or 0.0) - (_mid(wing_put) or 0.0)
         width = short_put.strike - wing_put.strike
@@ -161,6 +268,8 @@ def pick_structure(
             return None
         legs = [_spread_legs(short_put, wing_put)[0], _spread_legs(short_put, wing_put)[1]]
         max_loss = width - credit
+        if not _fits_size_gate(max_loss * contracts * 100.0, nav):
+            return None
         return StructureSpec(
             kind="bull_put_spread", intent="bps", symbol=symbol, legs=legs,
             expiry=expiry or short_put.expiry, dte=dte_ref, width=width,
@@ -172,8 +281,10 @@ def pick_structure(
 
     if verdict.direction == "BEARISH":
         short_call = _pick_leg(chain, "call", RISK.delta_short, today)
-        wing_call = _pick_leg(chain, "call", RISK.delta_wing, today)
-        if short_call is None or wing_call is None or wing_call.strike <= short_call.strike:
+        if short_call is None:
+            return None
+        wing_call = _pick_wing(chain, "call", short_call, RISK.delta_wing, today, nav)
+        if wing_call is None:
             return None
         credit = (_mid(short_call) or 0.0) - (_mid(wing_call) or 0.0)
         width = wing_call.strike - short_call.strike
@@ -182,6 +293,8 @@ def pick_structure(
             return None
         legs = [_spread_legs(short_call, wing_call)[0], _spread_legs(short_call, wing_call)[1]]
         max_loss = width - credit
+        if not _fits_size_gate(max_loss * contracts * 100.0, nav):
+            return None
         return StructureSpec(
             kind="bear_call_spread", intent="bcs", symbol=symbol, legs=legs,
             expiry=expiry or short_call.expiry, dte=dte_ref, width=width,
@@ -193,12 +306,13 @@ def pick_structure(
 
     short_call = _pick_leg(chain, "call", RISK.delta_short, today)
     short_put = _pick_leg(chain, "put", RISK.delta_short, today)
-    wing_call = _pick_leg(chain, "call", RISK.delta_wing, today)
-    wing_put = _pick_leg(chain, "put", RISK.delta_wing, today)
-    if any(x is None for x in (short_call, short_put, wing_call, wing_put)):
+    if short_call is None or short_put is None:
         return None
-    if wing_call.strike <= short_call.strike or wing_put.strike >= short_put.strike:
+    wings = _pick_condor_wings(chain, short_call, short_put, RISK.delta_wing,
+                               today, nav)
+    if wings is None:
         return None
+    wing_call, wing_put = wings
     credit = (
         (_mid(short_call) or 0.0) + (_mid(short_put) or 0.0)
         - (_mid(wing_call) or 0.0) - (_mid(wing_put) or 0.0)
@@ -219,6 +333,8 @@ def pick_structure(
     avg_iv = _avg_iv([short_call, short_put, wing_call, wing_put])
     dte_val = _dte_of(short_call, today)
     expected_move = price * (avg_iv or 0.22) * math.sqrt(max(dte_val, 1) / 252.0)
+    if not _fits_size_gate(max_loss * contracts * 100.0, nav):
+        return None
     return StructureSpec(
         kind="iron_condor", intent="ic", symbol=symbol, legs=legs,
         expiry=expiry or short_call.expiry, dte=dte_val, width=width,

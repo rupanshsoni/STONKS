@@ -10,6 +10,12 @@ import os
 from dataclasses import asdict, dataclass, field, fields
 from pathlib import Path
 
+try:  # local dev: load .env if present (deployed hosts inject real env vars)
+    from dotenv import load_dotenv
+    load_dotenv(Path(__file__).resolve().parent.parent / ".env")
+except ImportError:
+    pass
+
 ROOT = Path(__file__).resolve().parent.parent
 DATA_DIR = ROOT / "data"
 JOURNAL_PATH = DATA_DIR / "journal" / "events.jsonl"
@@ -31,6 +37,8 @@ class Env:
     gemini_key: str = field(default_factory=lambda: env("GEMINI_API_KEY"))
     openai_key: str = field(default_factory=lambda: env("OPENAI_API_KEY"))
     featherless_key: str = field(default_factory=lambda: env("FEATHERLESS_API_KEY"))
+    openrouter_glm_key: str = field(default_factory=lambda: env("OPENROUTER_GLM_KEY"))
+    openrouter_minimax_key: str = field(default_factory=lambda: env("OPENROUTER_MINIMAX_KEY"))
     desk_paused: bool = field(default_factory=lambda: env("DESK_PAUSED", "false").lower() == "true")
     test_mode: bool = field(default_factory=lambda: env("STONKS_TEST", "false").lower() == "true")
     tick_seconds: int = field(default_factory=lambda: int(env("TICK_SECONDS", "1800")))
@@ -158,23 +166,29 @@ def _save_json(p: Path, payload) -> None:
 
 
 # ---------------------------------------------------------------- LLM routing (ARCHITECTURE §2.3)
+#
+# OpenRouter surfaces (verified live 2026-09-03):
+#   glm     → z-ai/glm-5.2:free (escalates to z-ai/glm-5.3-flash on upstream 429)
+#   minimax → minimax/minimax-m3:free (JSON-mode confirmed)
+# Both are reasoning-capable; calls use generous max_tokens so content is
+# always populated. Fallbacks keep the desk alive on provider outage.
 
 @dataclass
 class LLMRoute:
     role: str
-    primary: str          # provider id: gemini | openai | featherless
+    primary: str          # provider id: gemini | openai | featherless | glm | minimax
     model: str
     fallbacks: list[str] = field(default_factory=list)
 
 
 LLM_ROUTES: dict[str, LLMRoute] = {
-    "senti": LLMRoute("senti", "gemini", "gemini-2.0-flash", ["openai"]),
-    "debate": LLMRoute("debate", "gemini", "gemini-2.0-flash", ["openai"]),
-    "narrator": LLMRoute("narrator", "gemini", "gemini-2.0-flash", ["openai"]),
-    "judge": LLMRoute("judge", "openai", "gpt-4o", ["gemini"]),
-    "structurer": LLMRoute("structurer", "openai", "gpt-4o", ["gemini"]),
-    "sage": LLMRoute("sage", "openai", "gpt-4o", ["gemini"]),
-    "partner": LLMRoute("partner", "featherless", "featherless/quill-72b", ["gemini"]),
+    "senti": LLMRoute("senti", "glm", "z-ai/glm-5.2:free", ["minimax", "gemini"]),
+    "debate": LLMRoute("debate", "glm", "z-ai/glm-5.2:free", ["minimax", "gemini"]),
+    "narrator": LLMRoute("narrator", "glm", "z-ai/glm-5.2:free", ["minimax", "gemini"]),
+    "judge": LLMRoute("judge", "minimax", "minimax/minimax-m3:free", ["glm", "gemini"]),
+    "structurer": LLMRoute("structurer", "minimax", "minimax/minimax-m3:free", ["glm", "gemini"]),
+    "sage": LLMRoute("sage", "minimax", "minimax/minimax-m3:free", ["glm", "gemini"]),
+    "partner": LLMRoute("partner", "featherless", "featherless/quill-72b", ["minimax", "glm"]),
 }
 
 
@@ -210,22 +224,26 @@ CAST: list[dict] = [
 
 # ---------------------------------------------------------------- events calendar (static, for tests / fallback)
 
-# Known macro events during the hackathon window (UTC dates, hour = 13:30 ET approx).
-# Static fallback only — the event analyst prefers live calendar data; dates here
-# are kept OUTSIDE the blackout window so test cycles exercise the full pipeline.
+# Known macro events near the trading window (UTC dates; hour ≈ 13:30 ET).
+# Static fallback only — the event analyst prefers live calendar data; the
+# FOMC date below keeps the blackout machinery exercised with REAL dates.
+# Update before the scoring window; dates already past are ignored by
+# _hours_to_event (hours < 0 are dropped).
 EVENTS: list[dict] = [
-    {"symbol": "INDEX", "kind": "CPI", "date": "2026-08-27"},
-    {"symbol": "SPY", "kind": "CPI", "date": "2026-08-27"},
-    {"symbol": "QQQ", "kind": "CPI", "date": "2026-08-27"},
+    {"symbol": "INDEX", "kind": "FOMC", "date": "2026-09-16"},
+    {"symbol": "SPY", "kind": "FOMC", "date": "2026-09-16"},
+    {"symbol": "QQQ", "kind": "FOMC", "date": "2026-09-16"},
+    {"symbol": "INDEX", "kind": "CPI", "date": "2026-09-10"},
+    {"symbol": "SPY", "kind": "CPI", "date": "2026-09-10"},
 ]
 
-# Earnings dates for the watchlist (approximate; the event analyst prefers live
-# corporate-actions/calendar data and falls back to this table).
+# Earnings dates for the watchlist (approximate; the event analyst prefers
+# live corporate-actions/calendar data and falls back to this table).
 EARNINGS: dict[str, str] = {
-    "AAPL": "2026-10-01",
-    "MSFT": "2026-10-15",
-    "NVDA": "2026-08-26",
-    "TSLA": "2026-10-13",
+    "AAPL": "2026-10-29",
+    "MSFT": "2026-10-28",
+    "NVDA": "2026-09-23",  # late Sept — active during the scoring window
+    "TSLA": "2026-10-22",
 }
 
 

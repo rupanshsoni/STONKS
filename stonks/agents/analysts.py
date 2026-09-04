@@ -59,15 +59,26 @@ class CodeAnalysts:
             [f"IVR {iv_rank} below floor {RISK.min_iv_rank} — premium selling not paid for"],
         ))
 
-        call_vol = sum(e.volume or 0 for e in chain if e.option_type == "call")
-        put_vol = sum(e.volume or 0 for e in chain if e.option_type == "put")
-        net = call_vol - put_vol
-        sign = 1 if net >= 0 else -1
+        # Dealer-gamma proxy: gamma-weighted OPEN INTEREST (naive GEX).
+        # Raw volume/OI signs are broken proxies on index options —
+        # institutional put hedging makes SPY/QQQ/IWM permanently put-heavy
+        # by count (verified live: SPY p/c OI 4.2x, still net-long dealer
+        # gamma). Weighting by gamma × OI and requiring 2:1 dominance
+        # separates genuinely put-gamma-stressed names from normal hedging.
+        call_g = sum((e.gamma or 0) * (e.open_interest or 0)
+                     for e in chain if e.option_type == "call")
+        put_g = sum((e.gamma or 0) * (e.open_interest or 0)
+                    for e in chain if e.option_type == "put")
+        ratio = call_g / max(put_g, 1.0)
+        sign = -1 if ratio < 0.5 else 1
         reports.append(AnalystReport(
             analyst="gex", symbol=symbol,
-            facts=[Fact(id="gex.sign", label="flow sign", value=sign),
-                   Fact(id="gex.net_vol", label="call vol - put vol", value=net)],
-            summary=f"{'call' if sign > 0 else 'put'} flow dominant (net {net:+d} contracts)",
+            facts=[Fact(id="gex.sign", label="gamma-weighted OI sign", value=sign),
+                   Fact(id="gex.ratio", label="call/put gamma-OI ratio", value=round(ratio, 2))],
+            summary=(f"dealer gamma {'NEGATIVE' if sign < 0 else 'positive'} "
+                     f"(call/put gamma-OI {ratio:.2f})"
+                     + (" — put gamma dominates ≥2:1" if sign < 0 else "")),
+            concerns=["put-gamma dominance ≥2:1 — stressed regime"] if sign < 0 else [],
         ))
 
         ois = [e.open_interest for e in chain if e.open_interest is not None]

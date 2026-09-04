@@ -14,7 +14,7 @@ import os
 from stonks.config import ENV
 from stonks.schemas import StructureSpec
 
-PINNED_VERSION = "0.3.4"
+PINNED_VERSION = "0.3.4"  # historical pin — see start() note before bumping
 
 
 class MCPServer:
@@ -31,10 +31,18 @@ class MCPServer:
             return False
         if self._started and self._proc and self._proc.returncode is None:
             return True
+        # NOTE: the executor routes API-first; MCP is the optional agent-tool
+        # surface. alpaca-mcp-server 2.x (current PyPI) is a complete rewrite
+        # (env vars ALPACA_API_KEY/ALPACA_SECRET_KEY, ALPACA_TOOLSETS, tool
+        # schema per github.com/alpacahq/alpaca-mcp-server). The historical
+        # 0.3.4 pin below predates that rewrite. If this surface is enabled,
+        # install a 1.x pin (last V1 line: alpaca-mcp-server==1.0.13) or port
+        # the call site to the V2 place_option_order schema.
         try:
             env = dict(os.environ)
-            env["ALPACA_API_KEY_ID"] = ENV.alpaca_key
-            env["ALPACA_API_SECRET_KEY"] = ENV.alpaca_secret
+            env["ALPACA_API_KEY"] = ENV.alpaca_key
+            env["ALPACA_SECRET_KEY"] = ENV.alpaca_secret
+            env["ALPACA_PAPER_TRADE"] = "true"
             self._proc = await asyncio.create_subprocess_exec(
                 "uvx", f"alpaca-mcp-server=={PINNED_VERSION}",
                 stdin=asyncio.subprocess.PIPE,

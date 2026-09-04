@@ -2,17 +2,16 @@
 import asyncio
 import os
 import sys
-import tempfile
 from pathlib import Path
 
 os.environ["STONKS_TEST"] = "true"
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 
 async def main() -> int:
-    tmp = Path(tempfile.mkdtemp(prefix="stonks-smoke-"))
     from stonks import fixtures  # noqa
     from stonks.api import journal, orch, store
-    from stonks.config import DB_PATH, CONFIG_HISTORY_PATH, JOURNAL_PATH
+    from stonks.config import DB_PATH, CONFIG_HISTORY_PATH, JOURNAL_PATH  # noqa
 
     summary = await orch.tick()
     print(f"cycle: {summary.cycle_id}")

@@ -12,6 +12,7 @@ desk halts new entries and never trades disputed state.
 from __future__ import annotations
 
 import asyncio
+import math
 import uuid
 from datetime import timedelta
 
@@ -206,7 +207,22 @@ class Orchestrator:
     async def _close_position(self, ledger: PositionLedger, cycle_id: str,
                               rule: str, pnl_est: float) -> None:
         try:
-            receipt = await self.executor.close_position(ledger.spec)
+            # Price the buyback off the CURRENT structure value, not entry
+            # credit — a static multiple of entry never fills a hard-stop.
+            # Cap: width (max structural loss) → always marketable, bounded.
+            max_debit = None
+            if rule == "Daily halt flatten":
+                max_debit = ledger.spec.width  # flatten at any bounded price
+            elif pnl_est is not None and pnl_est < 0:
+                # losing stop: current mark ≈ (credit*100*qty + |pnl|)/(100*qty)
+                qty = max(ledger.spec.contracts, 1)
+                max_debit = ledger.spec.credit + abs(pnl_est) / (100.0 * qty)
+                max_debit = min(max_debit * 1.10, ledger.spec.width)
+            else:
+                # profit-taking: pay up to ~70% of entry credit (target keeps
+                # >=30% of the credit as realized profit)
+                max_debit = max(ledger.spec.credit * 0.70, 0.10)
+            receipt = await self.executor.close_position(ledger.spec, max_debit)
             closed_pnl = pnl_est
             await asyncio.to_thread(
                 self.store.mark_closed, ledger.coid, utcnow(), closed_pnl, rule,
@@ -271,7 +287,14 @@ class Orchestrator:
                                 f"Copilot request rejected — '{s}' not tradable here.",
                                 cycle_id=cycle_id, level="warn")
         ask_only = [s for (_, s) in ask_symbols]
-        merged: list = list(candidates)
+        # Candidate priority: watchlist first (always optionable, always
+        # liquid), then screener finds (may be junk/unoptionable — the
+        # pipeline drops price<=0 and empty chains cheaply, but LLM calls
+        # are expensive: free-tier cycles are minutes each).
+        watch_syms = set(RISK.watchlist)
+        cands_watch = [c for c in candidates if c.symbol in watch_syms]
+        cands_found = [c for c in candidates if c.symbol not in watch_syms]
+        merged: list = cands_watch + cands_found
         for req, sym in ask_symbols:
             if sym in tradable and sym not in [c.symbol for c in merged]:
                 price_map = await self.client.snapshot_prices([sym])
@@ -282,6 +305,10 @@ class Orchestrator:
 
         prices = await self.client.snapshot_prices([c.symbol for c in merged])
         vix = self._vix_value()
+        if not self.test_mode:
+            # One market-wide VIX refresh per cycle (SPY ATM implied vol).
+            await self._market_regime_inputs("SPY")
+            vix = self._vix_value()
         lessons = await asyncio.to_thread(self.store.lessons)
 
         for candidate in merged:
@@ -309,9 +336,12 @@ class Orchestrator:
         pending_asks: list | None = None,
     ) -> StructureSpec | None:
         chain = await self.client.option_chain(symbol, RISK.target_dte_min,
-                                               RISK.target_dte_max)
+                                                RISK.target_dte_max)
         if not chain:
             return None
+        if not self.test_mode:
+            # per-symbol IV rank + VRP edge (the trade's own vol economics)
+            await self._hydrate_symbol_regime(symbol, chain)
         news = await self.client.news(symbol)
         events_hours = self._hours_to_event(symbol)
         event_flags = self._event_flags(symbol)
@@ -325,7 +355,7 @@ class Orchestrator:
                     f"{symbol} sentiment {sentiment.public_sentiment:+.2f} "
                     f"(conf {sentiment.confidence:.2f}, {len(sentiment.citations)} citations).",
                     symbol=symbol, cycle_id=cycle_id,
-                    data=sentiment.model_dump(), model="gemini-2.0-flash")
+                    data=sentiment.model_dump(), model="z-ai/glm-5.2:free")
 
         reports = self.analysts.analyze(symbol, chain, price, news,
                                         iv_rank=self._iv_rank(symbol), vix=vix,
@@ -409,6 +439,8 @@ class Orchestrator:
             nav=equity, day_pnl=0.0, open_positions=open_views, open_risk=open_risk,
             chain=chain, quotes_age_seconds=quotes_age, regime=regime,
             iv_rank=self._iv_rank(symbol), vix=vix,
+            vrp_edge=(getattr(self, "_symbol_vrp", {}) or {}).get(symbol)
+                     if not self.test_mode else None,
             event_hours_to_nearest=events_hours, coid_exists=coid_exists,
             dry_run_ok=dry_run_ok,
         )
@@ -534,7 +566,7 @@ class Orchestrator:
                     + (f" | REJECTED_PROPOSAL: {', '.join(f'{p.param} {p.reason}' for p in rejected)}."
                        if rejected else ""),
                     symbol=ledger.symbol, cycle_id=cycle_id,
-                    data=lesson.model_dump(), model="gpt-4o")
+                    data=lesson.model_dump(), model="minimax/minimax-m3:free")
         self._set_state("sage", "analyzing", "lesson filed to L3")
         self._set_state("sage", "idle")
         summary_rejected = [p for p in lesson.param_proposals if p.status == "rejected"]
@@ -587,14 +619,84 @@ class Orchestrator:
         return flags
 
     def _vix_value(self) -> float:
-        """VIX proxy for regime routing. VIXY (the ETF) tracks VIX×10; test mode is calm."""
+        """VIX proxy — deterministic fallback; refined per-cycle by _market_regime_inputs.
+
+        Base value is a conservative estimate; when live data is available the
+        ATM SPY implied vol (from chain snapshots) overrides it in
+        _market_regime_inputs. VIXY (ETF) ≈ VIX/10 gives a sanity band.
+        """
+        if self.test_mode:
+            return 15.0
+        return self._live_vix if getattr(self, "_live_vix", None) else 18.0
+
+    def _iv_rank(self, symbol: str) -> float:
+        """IV rank proxy: chain IV percentile vs the desk's historical band.
+
+        Live: avg ATM IV from the freshest chain snapshot of this cycle,
+        rescaled into a 0..100 rank against a fixed 10..60 IV band (the
+        classic index-options band). Falls back to 30 (neutral) when the
+        chain is unavailable — journaled as such by the VRP gate detail.
+        """
+        if self.test_mode:
+            return 30.0
+        ivs = getattr(self, "_live_ivs", {}).get(symbol)
+        if not ivs:
+            return 30.0
+        avg_iv = sum(ivs) / len(ivs)
+        lo, hi = 0.10, 0.60
+        rank = (avg_iv - lo) / (hi - lo) * 100.0
+        return max(0.0, min(100.0, rank))
+
+    async def _market_regime_inputs(self, symbol: str) -> float:
+        """Live VIX proxy for regime routing (market-wide, from SPY).
+
+        Near-ATM SPY 28-40 DTE chain IV reads like a 30-day index vol (how
+        VIX itself is built). Cached per cycle; candidates use their own
+        per-symbol VRP via _hydrate_symbol_regime.
+        """
         if self.test_mode:
             return 15.0
         try:
-            vixy = asyncio.get_event_loop()
+            spy = await self.client.snapshot_prices(["SPY"])
+            px = spy.get("SPY", 0.0)
+            chain = await self.client.option_chain("SPY", 28, 40) if px else []
+            atm = [e for e in chain if e.iv is not None
+                   and abs(e.strike - px) <= max(px * 0.02, 1.0)]
+            if atm:
+                self._live_vix = sum(e.iv for e in atm) / len(atm) * 100.0
         except Exception:
             pass
-        return 18.0
+        return getattr(self, "_live_vix", 18.0)
 
-    def _iv_rank(self, symbol: str) -> float:
-        return 30.0
+    async def _hydrate_symbol_regime(self, symbol: str, chain: list) -> None:
+        """Per-symbol IV rank + VRP edge for the VRP gate.
+
+        The gate should measure THE TRADE: candidate's own near-ATM chain IV
+        (the vol we'd actually sell) minus its own 20-day realized vol (what
+        the underlying actually did). A single-name like NVDA can carry a
+        rich VRP while the index (SPY) is flat — using the index edge for a
+        single-name candidate is a category error.
+        """
+        if self.test_mode or not chain:
+            return
+        try:
+            px_map = await self.client.snapshot_prices([symbol])
+            px = px_map.get(symbol, 0.0)
+            atm = [e for e in chain if e.iv is not None
+                   and abs(e.strike - px) <= max(px * 0.02, 1.0)]
+            if not atm:
+                return
+            ivs = [e.iv for e in atm]
+            self._live_ivs = getattr(self, "_live_ivs", {}) or {}
+            self._live_ivs[symbol] = ivs
+            bars = await self.client.daily_bars(symbol, 21)
+            closes = [b["c"] for b in bars][-21:]
+            if len(closes) >= 10:
+                rets = [math.log(closes[i] / closes[i - 1])
+                        for i in range(1, len(closes))]
+                realized = (sum(r * r for r in rets) / len(rets)) ** 0.5 * math.sqrt(252)
+                implied = sum(ivs) / len(ivs)
+                self._symbol_vrp = getattr(self, "_symbol_vrp", {}) or {}
+                self._symbol_vrp[symbol] = implied - realized
+        except Exception:
+            pass

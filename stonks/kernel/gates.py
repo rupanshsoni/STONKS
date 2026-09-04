@@ -27,6 +27,7 @@ class GateContext:
     )
     iv_rank: float | None = None
     vix: float = 15.0
+    vrp_edge: float | None = None
     event_hours_to_nearest: float | None = None
     coid_exists: bool = False
     dry_run_ok: bool = True
@@ -85,8 +86,15 @@ def _gate_regime(spec: StructureSpec, ctx: GateContext) -> GateResult:
 
 
 def _gate_vrp_edge(spec: StructureSpec, ctx: GateContext) -> GateResult:
-    if ctx.iv_rank is not None:
+    # Live VRP edge (implied − realized, both annualized) is the primary
+    # input when provided by the orchestrator; IV-rank/100 is the fallback
+    # proxy (test mode + degraded data).
+    if ctx.vrp_edge is not None:
+        edge = ctx.vrp_edge
+        src = "implied−realized"
+    elif ctx.iv_rank is not None:
         edge = ctx.iv_rank / 100.0
+        src = "ivr proxy"
     else:
         iv = _avg_leg_iv(spec, ctx.chain)
         if iv is None:
@@ -95,11 +103,13 @@ def _gate_vrp_edge(spec: StructureSpec, ctx: GateContext) -> GateResult:
                 detail="no IV available on chain",
             )
         edge = iv
+        src = "chain IV"
     if edge >= RISK.vrp_min_edge:
-        return GateResult(gate="VRP_EDGE", passed=True, detail=f"edge {edge:.3f} >= {RISK.vrp_min_edge}")
+        return GateResult(gate="VRP_EDGE", passed=True,
+                          detail=f"edge {edge:.3f} ({src}) >= {RISK.vrp_min_edge}")
     return GateResult(
         gate="VRP_EDGE", passed=False, reason_code="EDGE_BELOW_MIN",
-        detail=f"edge {edge:.3f} < {RISK.vrp_min_edge}",
+        detail=f"edge {edge:.3f} ({src}) < {RISK.vrp_min_edge}",
     )
 
 

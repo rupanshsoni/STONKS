@@ -127,7 +127,7 @@ VERDICT_FIXTURE = {
     "conviction": 0.62,
     "key_factor": "Event calendar risk outweighs moderate bullish data.",
     "weakest_link": "Toro's staging argument ignores gap-through risk on short strikes.",
-    "model": "gpt-4o",
+    "model": "minimax/minimax-m3:free",
 }
 
 STRUCTURER_CONFIRM = {"decision": "confirm", "reason": "Structure matches regime and verdict; terms sane."}

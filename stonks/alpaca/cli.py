@@ -31,9 +31,11 @@ class AlpacaCLI:
         if not self.available:
             raise CLIError("alpaca binary not available")
         env = dict(os.environ)
-        env["APCA_API_KEY_ID"] = ENV.alpaca_key
-        env["APCA_API_SECRET_KEY"] = ENV.alpaca_secret
-        env["APCA_API_BASE_URL"] = "https://paper-api.alpaca.markets"
+        # Verified env names (github.com/alpacahq/cli): ALPACA_API_KEY /
+        # ALPACA_SECRET_KEY route to paper unless ALPACA_LIVE_TRADE=true.
+        env["ALPACA_API_KEY"] = ENV.alpaca_key
+        env["ALPACA_SECRET_KEY"] = ENV.alpaca_secret
+        env.pop("ALPACA_LIVE_TRADE", None)  # paper only, hard guard
         try:
             proc = subprocess.run(
                 ["alpaca", *args],
@@ -48,7 +50,8 @@ class AlpacaCLI:
     async def positions(self) -> list[dict]:
         if not self.available:
             return getattr(self, "_fallback_positions", [])
-        out = await asyncio.to_thread(self._run, ["position", "list", "--json"])
+        # CLI emits JSON on stdout by default (no --json flag).
+        out = await asyncio.to_thread(self._run, ["position", "list"])
         try:
             data = json.loads(out)
         except json.JSONDecodeError as exc:
@@ -63,7 +66,7 @@ class AlpacaCLI:
     async def account_info(self) -> dict:
         if not self.available:
             return {**fixtures.ACCOUNT_VIEW, "source": "fallback"}
-        out = await asyncio.to_thread(self._run, ["account", "get", "--json"])
+        out = await asyncio.to_thread(self._run, ["account", "get"])
         try:
             return json.loads(out)
         except json.JSONDecodeError as exc:
@@ -80,12 +83,16 @@ class AlpacaCLI:
             if not ok:
                 raise CLIError("local payload validation failed")
             return {"ok": True, "validated": "local", "legs": len(spec.legs)}
+        # CLI: raw api escape hatch with a --dry-run preview on order submit.
         args = [
-            "order", "submit", "--dry-run", "--json",
+            "order", "submit",
+            "--symbol", spec.legs[0].option_symbol,
+            "--side", spec.legs[0].side,
             "--qty", str(spec.contracts),
+            "--type", "limit",
+            "--limit-price", f"{spec.credit:.2f}",
+            "--client-order-id", f"dry-{spec.intent}-{spec.symbol}",
+            "--dry-run",
         ]
         out = await asyncio.to_thread(self._run, args, timeout=60)
-        try:
-            return {"ok": True, "validated": "cli", "raw": out[:400]}
-        except Exception as exc:
-            raise CLIError(f"dry-run failed: {exc}") from exc
+        return {"ok": True, "validated": "cli", "raw": out[:400]}

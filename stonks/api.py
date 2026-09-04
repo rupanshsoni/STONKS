@@ -74,17 +74,23 @@ async def health() -> dict:
         "alpaca": True,
         "mcp": False,
     }
+    account_id: str | None = None
     try:
         store.recent_events(1)
     except Exception:
         checks["db"] = False
     try:
-        await _client.account()
+        acc = await _client.account()
+        account_id = acc.account_number
     except Exception:
         checks["alpaca"] = False
+    # mcp is optional by design (API-first routing with graceful degrade);
+    # only db + alpaca gate the status.
+    core_ok = checks["db"] and checks["alpaca"]
     return {
-        "status": "ok" if all(checks.values()) or ENV.test_mode else "degraded",
+        "status": "ok" if (core_ok or ENV.test_mode) else "degraded",
         "checks": checks,
+        "account_id": account_id,
         "test_mode": ENV.test_mode,
         "version": __version__,
         "ts": utcnow().isoformat(),
@@ -270,8 +276,9 @@ async def risk_endpoint() -> dict:
 
 def _agent_model(agent_id: str) -> str | None:
     mapping = {
-        "senti": "gemini-2.0-flash", "toro": "gemini-2.0-flash",
-        "ursa": "gemini-2.0-flash", "verdi": "gpt-4o", "sage": "gpt-4o",
-        "gate": None, "xq": None, "prime": "gemini-2.0-flash (narration)",
+        "senti": "z-ai/glm-5.2:free", "toro": "z-ai/glm-5.2:free",
+        "ursa": "z-ai/glm-5.2:free", "verdi": "minimax/minimax-m3:free",
+        "sage": "minimax/minimax-m3:free",
+        "gate": None, "xq": None, "prime": "z-ai/glm-5.2:free (narration)",
     }
     return mapping.get(agent_id)
